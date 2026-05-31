@@ -1,0 +1,6 @@
+{
+  "name": "Codeforces Companion",
+  "description": "一个强大的 Codeforces 刷题辅助系统，支持查找用户、Rating 曲线、AC 题目多维统计、题目分类筛选与推荐、定制个人错题本与刷题计划以及 AI 智能思路解析与算法提示。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
