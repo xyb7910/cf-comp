@@ -4,29 +4,124 @@ import fs, { promises as fsPromises } from "fs";
 import os from "os";
 import { exec, execSync } from "child_process";
 import { promisify } from "util";
+import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
+import { ZhipuAI } from "zhipuai";
 import dotenv from "dotenv";
 import { ATCODER_FALLBACK_PROBLEMS, LUOGU_PROBLEMS, NOWCODER_PROBLEMS } from "./server/curatedProblems";
 
 const execPromise = promisify(exec);
 
-dotenv.config();
+// Load environment variables with priority: .env.local > .env
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const envLocalPath = path.join(__dirname, '.env.local');
+const envPath = path.join(__dirname, '.env');
+
+if (fs.existsSync(envLocalPath)) {
+  dotenv.config({ path: envLocalPath });
+  console.log('[Environment] Loaded from .env.local');
+} else if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+  console.log('[Environment] Loaded from .env');
+} else {
+  dotenv.config();
+  console.log('[Environment] No .env files found, using system env');
+}
+
+// Debug: Check if API key is loaded
+console.log('[Environment] GEMINI_API_KEY configured:', !!process.env.GEMINI_API_KEY);
+console.log('[Environment] DEEPSEEK_API_KEY configured:', !!process.env.DEEPSEEK_API_KEY);
+console.log('[Environment] ZHIPU_API_KEY configured:', !!process.env.ZHIPU_API_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
-// Initialize Gemini Client
-const ai = new GoogleGenAI({
+// Initialize Gemini Client with increased timeout
+const geminiAi = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || "",
   httpOptions: {
     headers: {
       'User-Agent': 'aistudio-build',
-    }
+    },
+    timeout: 60000 // 60 seconds timeout
   }
 });
+
+// Initialize DeepSeek Client (OpenAI compatible API)
+let deepseekAi: OpenAI | null = null;
+if (process.env.DEEPSEEK_API_KEY) {
+  deepseekAi = new OpenAI({
+    apiKey: process.env.DEEPSEEK_API_KEY,
+    baseURL: "https://api.deepseek.com",
+    timeout: 60000
+  });
+}
+
+// Initialize ZhipuAI Client
+let zhipuAi: ZhipuAI | null = null;
+if (process.env.ZHIPU_API_KEY) {
+  zhipuAi = new ZhipuAI({
+    apiKey: process.env.ZHIPU_API_KEY
+  });
+}
+
+// Get active AI provider: prefer ZhipuAI > DeepSeek > Gemini
+function getActiveProvider(): "zhipu" | "deepseek" | "gemini" {
+  if (zhipuAi && process.env.ZHIPU_API_KEY) {
+    return "zhipu";
+  }
+  if (deepseekAi && process.env.DEEPSEEK_API_KEY) {
+    return "deepseek";
+  }
+  return "gemini";
+}
+
+// Unified AI call function
+async function callAI(prompt: string, systemInstruction?: string): Promise<string> {
+  const provider = getActiveProvider();
+  
+  if (provider === "zhipu" && zhipuAi) {
+    const messages: any[] = [];
+    if (systemInstruction) {
+      messages.push({ role: "system", content: systemInstruction });
+    }
+    messages.push({ role: "user", content: prompt });
+    
+    const response = await zhipuAi.chat.completions.create({
+      model: "glm-4-flash",
+      messages,
+      temperature: 0.7
+    });
+    
+    return response.choices[0]?.message?.content || "";
+  } else if (provider === "deepseek" && deepseekAi) {
+    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
+    if (systemInstruction) {
+      messages.push({ role: "system", content: systemInstruction });
+    }
+    messages.push({ role: "user", content: prompt });
+    
+    const response = await deepseekAi.chat.completions.create({
+      model: "deepseek-chat",
+      messages,
+      temperature: 0.7
+    });
+    
+    return response.choices[0]?.message?.content || "";
+  } else {
+    // Use Gemini
+    const response = await geminiAi.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: systemInstruction ? { systemInstruction } : undefined
+    });
+    return response.text || "";
+  }
+}
 
 // Cache for Codeforces Problemset
 interface ProblemCache {
@@ -629,7 +724,7 @@ app.get("/api/problemset-problems", async (req, res) => {
   }
 });
 
-// AI Problem Explainer API endpoint Using Gemini 3.5 Flash
+// AI Problem Explainer API endpoint Using Gemini 3.5 Flash or DeepSeek
 app.post("/api/explain", async (req, res) => {
   const { problemCode, name, rating, tags, language, platform } = req.body;
   if (!problemCode || !name) {
@@ -637,13 +732,16 @@ app.post("/api/explain", async (req, res) => {
     return;
   }
 
-  // Check if GEMINI_API_KEY is available
-  if (!process.env.GEMINI_API_KEY) {
+  // Check if any API key is available
+  const hasGemini = !!process.env.GEMINI_API_KEY;
+  const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+  const hasZhipu = !!process.env.ZHIPU_API_KEY;
+  if (!hasGemini && !hasDeepSeek && !hasZhipu) {
     res.json({
       error: "API_KEY_MISSING",
       text: `### 🔑 AI 助手尚未配置
-由于系统尚未注入 **GEMINI_API_KEY**，暂时无法提供动态 AI 解析。
-请在 **Settings > Secrets** 面板中添加 \`GEMINI_API_KEY\` 后即可开启。
+由于系统尚未注入 **API Key**，暂时无法提供动态 AI 解析。
+请在配置中添加 \`ZHIPU_API_KEY\`（推荐）、\`DEEPSEEK_API_KEY\` 或 \`GEMINI_API_KEY\` 后即可开启。
 
 ---
 #### 💡 本地刷题建议:
@@ -691,18 +789,51 @@ app.post("/api/explain", async (req, res) => {
 请使用亲切专业、激发深思的语气，避开直白的贴完整答案，以启发学生思考为主。`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: prompt,
-      config: {
-        systemInstruction: "你是一个专业的算法竞赛导师，解答清晰简洁、善于启发并且使用标准的 Markdown，完美渲染 LaTeX 数学公式。输入语言是中文。"
-      }
-    });
-
-    res.json({ text: response.text });
+    const provider = getActiveProvider();
+    console.log(`[API] Using ${provider} for /api/explain`);
+    
+    const responseText = await callAI(prompt, "你是一个专业的算法竞赛导师，解答清晰简洁、善于启发并且使用标准的 Markdown，完美渲染 LaTeX 数学公式。输入语言是中文。");
+    res.json({ text: responseText });
   } catch (error: any) {
-    console.error("Gemini API Error in /api/explain:", error);
-    res.status(500).json({ error: error.message || "Failed to generate AI explanation" });
+    console.error("API Error in /api/explain:", error);
+    
+    // Friendly error message
+    const provider = getActiveProvider();
+    let errorMessage = "抱歉，AI 助手暂时无法响应。";
+    if (error.message?.includes("fetch failed") || error.message?.includes("timeout")) {
+      errorMessage = `### 🌐 网络连接问题
+
+**错误原因**: 无法连接到 ${provider === "deepseek" ? "DeepSeek" : "Google Gemini"} API 服务
+
+**解决方案**:
+1. 检查你的网络连接
+2. 如果在国内，可以优先配置 DeepSeek API
+3. 稍后重试
+
+---
+#### 💡 本地刷题建议:
+* 题目 **${problemCode} - ${name}** (Rating: ${rating || "暂无"}) 标签为 \`${tags?.join(", ") || "无"}\`。
+* 建议先了解 **${tags?.[0] || '相关的算法'}** 概念，并尝试利用样例进行纸上推演。
+* 思考特殊边界（比如 $N=1$, 负数, 溢出情况）。`;
+    } else if (error.message?.includes("API key")) {
+      errorMessage = `### 🔑 API Key 问题
+
+请检查你的 API Key 是否正确配置。`;
+    } else {
+      errorMessage = `### ⚠️ 发生错误
+
+${error.message || "未知错误"}
+
+---
+#### 💡 本地刷题建议:
+* 题目 **${problemCode} - ${name}** (Rating: ${rating || "暂无"}) 标签为 \`${tags?.join(", ") || "无"}\`。
+* 建议先了解 **${tags?.[0] || '相关的算法'}** 概念。`;
+    }
+    
+    res.json({ 
+      error: "API_CALL_FAILED",
+      text: errorMessage 
+    });
   }
 });
 
@@ -863,15 +994,18 @@ app.post("/api/run-code", async (req, res) => {
   ) {
     console.log("Using AI smart compilation and execution simulator since physical compilers are missing or requested...");
     
-    if (!process.env.GEMINI_API_KEY) {
+    const hasGemini = !!process.env.GEMINI_API_KEY;
+    const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+    const hasZhipu = !!process.env.ZHIPU_API_KEY;
+    if (!hasGemini && !hasDeepSeek && !hasZhipu) {
       res.json({
         compiled: false,
-        compileError: "⚠️ 本地编译器未找到，且由于未配置 GEMINI_API_KEY，无法开启 AI 深度模拟自测与解法复杂度评级。\n请前往 Settings > Secrets 面板中添加 GEMINI_API_KEY 后，即可开始无限快速编译调试！",
+        compileError: "⚠️ 本地编译器未找到，且由于未配置 API Key，无法开启 AI 深度模拟自测与解法复杂度评级。\n请添加 ZHIPU_API_KEY（推荐）、DEEPSEEK_API_KEY 或 GEMINI_API_KEY 后，即可开始无限快速编译调试！",
         stdout: "",
         stderr: "ApiKeyMissing",
         status: "COMPILE_ERROR",
         execTime: 0,
-        aiAnalysis: "请配置 GEMINI_API_KEY 以获取智能时空复杂度建议与自动代码漏洞漏洞分析。",
+        aiAnalysis: "请配置 API Key 以获取智能时空复杂度建议与自动代码漏洞分析。",
         mode: "AI 深度智能模拟"
       });
       return;
@@ -914,15 +1048,10 @@ ${input || "(空输入)"}
   "aiAnalysis": "时空复杂度为 O(...)。"
 }`;
 
-      const aiResponse = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: gPrompt,
-        config: {
-          systemInstruction: "你是一个优秀的 JSON 返回器，返回的内容永远是一个格式完美的、能够被 JSON.parse 成功转换的纯文本 JSON 字符串，不要带任何 markdown 说明或包裹。输入和分析语言是中文。"
-        }
-      });
-
-      let jsonText = aiResponse.text?.trim() || "{}";
+      const provider = getActiveProvider();
+      console.log(`[API] Using ${provider} for /api/run-code`);
+      let jsonText = await callAI(gPrompt, "你是一个优秀的 JSON 返回器，返回的内容永远是一个格式完美的、能够被 JSON.parse 成功转换的纯文本 JSON 字符串，不要带任何 markdown 说明或包裹。输入和分析语言是中文。");
+      jsonText = jsonText.trim() || "{}";
       if (jsonText.startsWith("```")) {
         jsonText = jsonText.replace(/^```json/i, "").replace(/```$/, "").trim();
       }
@@ -948,7 +1077,22 @@ ${input || "(空输入)"}
       }
     } catch (geminiErr: any) {
       console.error("Gemini compiler simulator error:", geminiErr);
-      res.status(500).json({ error: "AI 智能编译器在处理当前语法时遇到问题，请重新开始。" });
+      
+      let errorMsg = "AI 智能编译器在处理当前语法时遇到问题，请重新开始。";
+      if (geminiErr.message?.includes("fetch failed") || geminiErr.message?.includes("timeout")) {
+        errorMsg = "🌐 网络连接问题，无法连接到 AI 服务。请检查你的网络连接或稍后重试。";
+      }
+      
+      res.json({
+        compiled: false,
+        compileError: errorMsg,
+        stdout: "",
+        stderr: "NetworkError",
+        status: "COMPILE_ERROR",
+        execTime: 0,
+        aiAnalysis: "网络连接失败，请检查网络后重试。",
+        mode: "AI 深度智能模拟"
+      });
     }
   } else {
     // Standard execution succeeded on container
@@ -993,10 +1137,13 @@ app.post("/api/duipai", async (req, res) => {
   }
 
   if (useAi) {
-    if (!process.env.GEMINI_API_KEY) {
+    const hasGemini = !!process.env.GEMINI_API_KEY;
+    const hasDeepSeek = !!process.env.DEEPSEEK_API_KEY;
+    const hasZhipu = !!process.env.ZHIPU_API_KEY;
+    if (!hasGemini && !hasDeepSeek && !hasZhipu) {
       res.json({
         success: false,
-        error: "⚠️ 由于未配置 GEMINI_API_KEY 且本地编译器物理缺失，无法开启 AI 智能数据对拍。\n请前往 Settings > Secrets 面板中添加 GEMINI_API_KEY 作为备用编译器支持。"
+        error: "⚠️ 由于未配置 API Key 且本地编译器物理缺失，无法开启 AI 智能数据对拍。\n请添加 ZHIPU_API_KEY（推荐）、DEEPSEEK_API_KEY 或 GEMINI_API_KEY 作为备用编译器支持。"
       });
       return;
     }
@@ -1052,15 +1199,10 @@ ${genCode}
   "aiAnalysis": "待测解法与暴力解法对拍分析汇总报告"
 }`;
 
-      const aiResponse = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: duipaiPrompt,
-        config: {
-          systemInstruction: "你是一个优秀的对拍评测 JSON 返回器，返回的内容永远是一个格式完美的、能够被 JSON.parse 成功转换的纯文本 JSON 字符串，不要带任何 markdown 说明或包裹。回答和调试用例分析用中文。"
-        }
-      });
-
-      let jsonText = aiResponse.text?.trim() || "{}";
+      const provider = getActiveProvider();
+      console.log(`[API] Using ${provider} for /api/duipai`);
+      let jsonText = await callAI(duipaiPrompt, "你是一个优秀的对拍评测 JSON 返回器，返回的内容永远是一个格式完美的、能够被 JSON.parse 成功转换的纯文本 JSON 字符串，不要带任何 markdown 说明或包裹。回答和调试用例分析用中文。");
+      jsonText = jsonText.trim() || "{}";
       if (jsonText.startsWith("```")) {
         jsonText = jsonText.replace(/^```json/i, "").replace(/```$/, "").trim();
       }
@@ -1069,8 +1211,17 @@ ${genCode}
       res.json(parsed);
       return;
     } catch (geminiErr: any) {
-      console.error(geminiErr);
-      res.status(500).json({ error: "AI 智能对拍在模拟代码逻辑时发生错误: " + geminiErr.message });
+      console.error("Gemini duipai error:", geminiErr);
+      
+      let errorMsg = "AI 智能对拍在模拟代码逻辑时发生错误: " + geminiErr.message;
+      if (geminiErr.message?.includes("fetch failed") || geminiErr.message?.includes("timeout")) {
+        errorMsg = "🌐 网络连接问题，无法连接到 AI 服务。请检查你的网络连接或稍后重试。";
+      }
+      
+      res.status(500).json({ 
+        success: false,
+        error: errorMsg 
+      });
       return;
     }
   }
