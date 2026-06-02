@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { CFProblem, CFSubmission, SavedProblem } from "../types";
 import { translateTag, TAG_TRANSLATIONS, getProblemUrl } from "../utils";
 import { renderTextWithMath } from "./MathRenderer";
+import AIMarkdownRenderer from "./AIMarkdownRenderer";
 import { Search, Filter, BookOpen, Star, HelpCircle, Loader2, Sparkles, AlertCircle, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, Bookmark, Save, Pencil, Trash } from "lucide-react";
 
 interface ProblemsViewProps {
@@ -779,15 +780,15 @@ export default function ProblemsView({
               </div>
 
               {aiExplanation ? (
-                <div className="p-4 bg-amber-50/20 border border-amber-200/50 rounded-xl overflow-y-auto max-h-[360px] custom-scrollbar">
-                  {renderMarkdown(aiExplanation)}
+                <div className="p-4 bg-gradient-to-br from-amber-50/30 to-orange-50/20 border border-amber-200/50 rounded-xl overflow-y-auto max-h-[420px] custom-scrollbar">
+                  <AIMarkdownRenderer content={aiExplanation} />
                   <button
                     id="reExplainBtn"
                     type="button"
                     onClick={() => getAIExplanation(activeExplainProblem)}
                     className="mt-4 w-full py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-xs text-slate-600 rounded-lg text-center font-medium transition"
                   >
-                    重新解析
+                    🔄 重新解析
                   </button>
                 </div>
               ) : (

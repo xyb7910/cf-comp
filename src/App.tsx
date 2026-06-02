@@ -149,10 +149,8 @@ export default function App() {
     }
   };
 
-  // Run on platform/handle change
+  // Run on platform change
   useEffect(() => {
-    const defaultHandle = handles[activePlatform] || "jiangly";
-    fetchUserProfileData(defaultHandle, activePlatform);
     fetchActiveProblemset(activePlatform);
   }, [activePlatform]);
 

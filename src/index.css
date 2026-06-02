@@ -1,1 +1,25 @@
 @import "tailwindcss";
+@import "katex/dist/katex.min.css";
+
+/* 移除可能冲突的自定义 KaTeX 样式 */
+/* 保留必要的全局样式 */
+
+/* 代码块滚动条样式 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
