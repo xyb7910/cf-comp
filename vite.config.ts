@@ -17,6 +17,34 @@ export default defineConfig(() => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      // Proxy configuration for Django backend
+      proxy: {
+        // Django authentication and user APIs
+        '/api/auth': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/api/users': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/api/saved-problems': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/api/training-plans': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/api/custom-problems': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+        '/api/health': {
+          target: 'http://localhost:8000',
+          changeOrigin: true,
+        },
+      },
     },
   };
 });

@@ -13,18 +13,36 @@ export default function UserProfile({ user, ratingHistory, platform = "codeforce
   const [hoveredPoint, setHoveredPoint] = useState<CFRatingChange | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
 
-  const tier = getRankTier(user.rating, user.rank, platform);
-  const maxTier = getRankTier(user.maxRating, user.maxRank, platform);
+  // 安全获取用户值，避免undefined错误
+  const safeUser = {
+    rating: user?.rating ?? 0,
+    maxRating: user?.maxRating ?? 0,
+    rank: user?.rank ?? "",
+    maxRank: user?.maxRank ?? "",
+    handle: user?.handle ?? "unknown",
+    registrationTimeSeconds: user?.registrationTimeSeconds ?? Math.floor(Date.now() / 1000) - 86400 * 365,
+    lastOnlineTimeSeconds: user?.lastOnlineTimeSeconds ?? Math.floor(Date.now() / 1000),
+    contribution: user?.contribution ?? 0,
+    friendOfCount: user?.friendOfCount ?? 0,
+    avatar: user?.avatar ?? "https://img.atcoder.jp/assets/icon/avatar.png",
+    titlePhoto: user?.titlePhoto ?? "https://img.atcoder.jp/assets/icon/avatar.png",
+    organization: user?.organization ?? "Competitive Programmer",
+    city: user?.city,
+    country: user?.country,
+  };
+
+  const tier = getRankTier(safeUser.rating, safeUser.rank, platform);
+  const maxTier = getRankTier(safeUser.maxRating, safeUser.maxRank, platform);
 
   // Parse Registration date
-  const registrationDate = new Date(user.registrationTimeSeconds * 1000).toLocaleDateString("zh-CN", {
+  const registrationDate = new Date(safeUser.registrationTimeSeconds * 1000).toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
 
   // Calculate Streak or submission info
-  const ratingMovements = ratingHistory.length;
+  const ratingMovements = (ratingHistory || []).length;
   
   // SVG Rating timeline calculations
   const chartHeight = 240;
@@ -32,16 +50,22 @@ export default function UserProfile({ user, ratingHistory, platform = "codeforce
 
   let svgElements = null;
   
-  if (ratingHistory && ratingHistory.length > 0) {
-    const ratings = ratingHistory.map(r => r.newRating);
+  // 安全检查：确保ratingHistory是数组且有有效数据
+  const safeRatingHistory = Array.isArray(ratingHistory) ? ratingHistory : [];
+  const validRatingHistory = safeRatingHistory.filter(r => 
+    r && typeof r.newRating === 'number' && typeof r.ratingUpdateTimeSeconds === 'number'
+  );
+  
+  if (validRatingHistory.length > 0) {
+    const ratings = validRatingHistory.map(r => r.newRating);
     const minRatingInHistory = Math.min(...ratings, 1000);
-    const maxRatingInHistory = Math.max(...ratings, 1500, user.maxRating);
+    const maxRatingInHistory = Math.max(...ratings, 1500, safeUser.maxRating);
     
     const minY = Math.floor(minRatingInHistory / 100) * 100 - 100;
     const maxY = Math.ceil(maxRatingInHistory / 100) * 100 + 100;
-    const rangeY = maxY - minY;
+    const rangeY = maxY - minY || 1; // 避免除零
 
-    const timestamps = ratingHistory.map(r => r.ratingUpdateTimeSeconds);
+    const timestamps = validRatingHistory.map(r => r.ratingUpdateTimeSeconds);
     const minX = Math.min(...timestamps);
     const maxX = Math.max(...timestamps);
     const rangeX = maxX - minX || 1;
@@ -52,7 +76,7 @@ export default function UserProfile({ user, ratingHistory, platform = "codeforce
     const plotWidth = viewWidth - padding.left - padding.right;
     const plotHeight = chartHeight - padding.top - padding.bottom;
 
-    const points = ratingHistory.map((history, idx) => {
+    const points = validRatingHistory.map((history, idx) => {
       const x = padding.left + ((history.ratingUpdateTimeSeconds - minX) / rangeX) * plotWidth;
       const y = chartHeight - padding.bottom - ((history.newRating - minY) / rangeY) * plotHeight;
       return { x, y, ...history, index: idx };
@@ -258,21 +282,21 @@ export default function UserProfile({ user, ratingHistory, platform = "codeforce
         <div className="relative group flex-shrink-0">
           <div className="absolute inset-0 bg-linear-to-tr from-amber-500 to-rose-500 rounded-2xl blur-xs opacity-60 group-hover:scale-105 transition duration-200"></div>
           <img
-            src={user.titlePhoto || user.avatar || "https://placekitten.com/150/150"}
-            alt={user.handle}
+            src={safeUser.titlePhoto || safeUser.avatar || "https://placekitten.com/150/150"}
+            alt={safeUser.handle}
             className="relative w-28 h-28 md:w-32 md:h-32 rounded-2xl object-cover border-4 border-white shadow-md"
             referrerPolicy="no-referrer"
           />
           <div className="absolute -bottom-2 -right-2 bg-slate-900 border border-slate-700 text-amber-400 px-2 py-0.5 rounded-md text-[10px] font-mono shadow-xs">
-            {user.contribution >= 0 ? "+" : ""}
-            {user.contribution} contrib
+            {safeUser.contribution >= 0 ? "+" : ""}
+            {safeUser.contribution} contrib
           </div>
         </div>
 
         {/* User Stats detail */}
         <div className="flex-1 text-center md:text-left">
           <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-2">
-            <h1 className="text-2xl font-black text-slate-800 tracking-tight">{user.handle}</h1>
+            <h1 className="text-2xl font-black text-slate-800 tracking-tight">{safeUser.handle}</h1>
             <span className={`px-2.5 py-1 text-xs rounded-full border border-current font-bold uppercase ${tier.bgClass}`}>
               {tier.name}
             </span>
@@ -281,27 +305,27 @@ export default function UserProfile({ user, ratingHistory, platform = "codeforce
           <div className="grid grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-6 text-sm text-slate-600 mt-4">
             <div className="flex items-center gap-2 justify-center md:justify-start">
               <TrendingUp className="w-4 h-4 text-emerald-500" />
-              <span>当前分: <strong className="text-slate-800 font-mono text-base">{user.rating || 0}</strong></span>
+              <span>当前分: <strong className="text-slate-800 font-mono text-base">{safeUser.rating}</strong></span>
             </div>
             <div className="flex items-center gap-2 justify-center md:justify-start">
               <Trophy className="w-4 h-4 text-amber-500" />
-              <span>历史最高分: <strong className="text-slate-800 font-mono text-base">{user.maxRating || 0}</strong></span>
+              <span>历史最高分: <strong className="text-slate-800 font-mono text-base">{safeUser.maxRating}</strong></span>
             </div>
             <div className="flex items-center gap-2 justify-center md:justify-start">
               <Award className="w-4 h-4 text-purple-500" />
-              <span>最高段位: <span className={`${maxTier.className} text-xs font-semibold`}>{user.maxRank || "N/A"}</span></span>
+              <span>最高段位: <span className={`${maxTier.className} text-xs font-semibold`}>{safeUser.maxRank || "N/A"}</span></span>
             </div>
             
-            {user.organization && (
+            {safeUser.organization && (
               <div className="flex items-center gap-2 justify-center md:justify-start col-span-2 md:col-span-1">
                 <Building2 className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-                <span className="truncate">组织: <strong className="text-slate-800" title={user.organization}>{user.organization}</strong></span>
+                <span className="truncate">组织: <strong className="text-slate-800" title={safeUser.organization}>{safeUser.organization}</strong></span>
               </div>
             )}
-            {(user.city || user.country) && (
+            {(safeUser.city || safeUser.country) && (
               <div className="flex items-center gap-2 justify-center md:justify-start">
                 <MapPin className="w-4 h-4 text-rose-500 flex-shrink-0" />
-                <span>地区: <strong className="text-slate-800">{[user.city, user.country].filter(Boolean).join(", ")}</strong></span>
+                <span>地区: <strong className="text-slate-800">{[safeUser.city, safeUser.country].filter(Boolean).join(", ")}</strong></span>
               </div>
             )}
             <div className="flex items-center gap-2 justify-center md:justify-start">

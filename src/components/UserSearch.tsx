@@ -156,7 +156,7 @@ export default function UserSearch({ onSearch, loading, error, activeHandle, act
       {error && (
         <div className="max-w-xl mx-auto mt-4 p-3 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 text-sm flex gap-2 items-center">
           <div className="w-2 h-2 rounded-full bg-rose-500 flex-shrink-0 animate-ping"></div>
-          <span>{error}。请检查该平台下的拼写或重新获取。</span>
+          <span>{error}</span>
         </div>
       )}
 

@@ -7,6 +7,7 @@ export interface CFProblem {
   points?: number;
   rating?: number; // e.g. 1200, 1600
   tags: string[]; // e.g. ["greedy", "dp", "math"]
+  createdAt?: number; // 添加时间（自定义题目）
 }
 
 export interface CFProblemStatistics {

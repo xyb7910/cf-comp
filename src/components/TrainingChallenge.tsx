@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { RECOMMEND_LEVELS, translateTag } from "../utils";
 import { CFProblem, CFSubmission, TrainingPlan } from "../types";
+import { useAuth } from "../context/AuthContext";
 import { 
   Sparkles, 
   Trophy, 
@@ -23,7 +24,9 @@ import {
   CheckCircle2, 
   BookmarkCheck,
   TrendingUp,
-  Inbox
+  Inbox,
+  Star,
+  Tag
 } from "lucide-react";
 
 interface TrainingChallengeProps {
@@ -31,6 +34,58 @@ interface TrainingChallengeProps {
   problems: CFProblem[];
   platform?: "codeforces" | "atcoder" | "luogu" | "nowcoder";
 }
+
+// 国内信息学竞赛训练题单配置
+const DOMESTIC_CONTEST_PLANS = [
+  {
+    id: "csp-j",
+    title: "CSP-J 入门级训练题单",
+    subtitle: "面向初中级选手的入门竞赛训练",
+    description: "CSP-J（普及组）是面向初中生的入门级信息学竞赛，重点训练基础算法与程序设计能力。",
+    badgeColor: "bg-blue-50 text-blue-700 border-blue-200",
+    gradient: "from-blue-400 to-blue-600",
+    targetRating: 1400,
+    tags: ["implementation", "brute force", "sorting", "binary search", "greedy", "math"],
+    targetCount: 30,
+    topics: ["基础模拟", "暴力搜索", "排序算法", "二分查找", "贪心算法", "初等数论"]
+  },
+  {
+    id: "csp-s",
+    title: "CSP-S 提高级训练题单",
+    subtitle: "面向高中级选手的提高竞赛训练",
+    description: "CSP-S（提高组）是面向高中生的提高级竞赛，重点训练树图算法、动态规划等核心能力。",
+    badgeColor: "bg-green-50 text-green-700 border-green-200",
+    gradient: "from-green-400 to-emerald-600",
+    targetRating: 1800,
+    tags: ["dp", "dfs and similar", "graphs", "data structures", "trees"],
+    targetCount: 25,
+    topics: ["动态规划", "深广搜索", "图论基础", "基础数据结构", "树结构"]
+  },
+  {
+    id: "noip",
+    title: "NOIP 全国联赛训练题单",
+    subtitle: "NOIP 全国青少年信息学奥林匹克联赛冲刺训练",
+    description: "NOIP 是全国性信息学奥赛，需要全面的算法知识与解题技巧，适合省赛及更高水平选手。",
+    badgeColor: "bg-amber-50 text-amber-700 border-amber-200",
+    gradient: "from-amber-400 to-orange-600",
+    targetRating: 2100,
+    tags: ["dp", "graphs", "trees", "data structures", "combinatorics", "flows"],
+    targetCount: 20,
+    topics: ["高级动态规划", "复杂图论", "高级数据结构", "组合数学", "网络流基础"]
+  },
+  {
+    id: "domestic-training",
+    title: "国内赛事综合训练题单",
+    subtitle: "全面覆盖国内信息学竞赛常考题型",
+    description: "针对 CSP、NOIP 等国内赛事的综合训练计划，涵盖各类高频考点与经典题型。",
+    badgeColor: "bg-purple-50 text-purple-700 border-purple-200",
+    gradient: "from-purple-400 to-indigo-600",
+    targetRating: 1600,
+    tags: ["implementation", "dp", "greedy", "math", "graphs", "data structures"],
+    targetCount: 40,
+    topics: ["全算法体系", "经典题型", "高频考点", "赛前冲刺"]
+  }
+];
 
 // Global static syllabus data representation of Novice-To-Master System (从新手到大师的算法体系大纲)
 const SYLLABUS_STAGES = [
@@ -168,6 +223,7 @@ const SYLLABUS_STAGES = [
 ];
 
 export default function TrainingChallenge({ submissions, problems = [], platform = "codeforces" }: TrainingChallengeProps) {
+  const { token, isAuthenticated } = useAuth();
   const [plans, setPlans] = useState<TrainingPlan[]>([]);
   const [targetRating, setTargetRating] = useState<number>(1400);
   const [targetTag, setTargetTag] = useState<string>("greedy");
@@ -180,6 +236,129 @@ export default function TrainingChallenge({ submissions, problems = [], platform
   // Expanded Active Goal ID to show recommendations (retained for backward compatibility or general navigation)
   const [expandedPlanId, setExpandedPlanId] = useState<string | null>(null);
 
+  // Expanded tags for accordion (blinds) style display
+  const [expandedTags, setExpandedTags] = useState<Record<string, Set<string>>>({});
+
+  // Backend problems data (按标签分类的题目数据)
+  const [backendProblemsByPlan, setBackendProblemsByPlan] = useState<Record<string, {
+    plan_id: string;
+    plan_title: string;
+    target_rating: number;
+    total_problems: number;
+    completed_count: number;
+    tags_order: string[];
+    problems_by_tag: Record<string, any[]>;
+  }>>({});
+
+  // Fetch problems from backend for a specific plan
+  const fetchBackendProblems = async (planId: string) => {
+    try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch(`/api/training-plans/${planId}/problems_by_tag/`, {
+        headers,
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setBackendProblemsByPlan(prev => ({
+          ...prev,
+          [planId]: data
+        }));
+      }
+    } catch (error) {
+      console.error('Failed to fetch backend problems:', error);
+    }
+  };
+
+  // Fetch problems for all backend plans
+  useEffect(() => {
+    // Fetch problems for ALL plans from backend (both presets and user-created)
+    plans.forEach(plan => {
+      // For user-created plans or preset plans, try to fetch problems from backend
+      // We'll let the backend return 404 if it doesn't exist, which is fine
+      fetchBackendProblems(plan.id);
+    });
+  }, [plans, token]);
+
+  // Fetch training plans from backend
+  const fetchBackendPlans = async () => {
+    try {
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      
+      const response = await fetch('/api/training-plans/', {
+        headers,
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        // Handle both cases: direct array or paginated response
+        const plansData = Array.isArray(data) ? data : (data.results || []);
+        
+        // Convert backend format to frontend format
+        const backendPlans: TrainingPlan[] = plansData.map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          targetRating: p.target_rating,
+          tags: p.tags || [],
+          createdAt: new Date(p.created_at).getTime(),
+          completed: p.completed
+        }));
+        
+        // Merge with local plans (keep user-created plans)
+        setPlans(prevPlans => {
+          // Keep plans that have user-created tag (not from backend)
+          const userPlans = prevPlans.filter(p => !p.id.startsWith('csp-') && !p.id.startsWith('noip') && !p.id.startsWith('domestic') && !p.id.startsWith('stage-'));
+          
+          // Merge: backend plans + user plans
+          const merged = [...backendPlans];
+          userPlans.forEach(up => {
+            if (!merged.some(mp => mp.id === up.id)) {
+              merged.push(up);
+            }
+          });
+          
+          return merged;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch backend plans:', error);
+    }
+  };
+
+  // Load plans from local storage and backend
+  useEffect(() => {
+    const saved = localStorage.getItem("cf_training_plans");
+    if (saved) {
+      try {
+        setPlans(JSON.parse(saved));
+      } catch (e) {
+        // ignore
+      }
+    } else {
+      // Default initial booster plans
+      const initial: TrainingPlan[] = [
+        { id: "1", title: "初级算法突围：贪心专项突破", targetRating: 1200, tags: ["greedy"], createdAt: Date.now(), completed: false },
+        { id: "2", title: "中级跃迁：动态规划核心强化", targetRating: 1500, tags: ["dp"], createdAt: Date.now() - 3600000, completed: false }
+      ];
+      setPlans(initial);
+      localStorage.setItem("cf_training_plans", JSON.stringify(initial));
+    }
+  }, []);
+  
+  // Fetch from backend when token changes
+  useEffect(() => {
+    if (token || isAuthenticated === false) {
+      fetchBackendPlans();
+    }
+  }, [token, isAuthenticated]);
+
   // Saved AC problems key identifiers helper
   const solvedProblemSet = useMemo(() => {
     const solved = new Set<string>();
@@ -191,8 +370,6 @@ export default function TrainingChallenge({ submissions, problems = [], platform
     });
     return solved;
   }, [submissions]);
-
-  // Attempted but NOT solved problems helper
   const attemptedProblemSet = useMemo(() => {
     const attempted = new Set<string>();
     submissions.forEach(sub => {
@@ -245,31 +422,51 @@ export default function TrainingChallenge({ submissions, problems = [], platform
         return (a.rating || 0) - (b.rating || 0); // Easier first
       });
 
-      res[plan.id] = sorted.slice(0, 8); // Slice max 8 most relevant recommendations
+      res[plan.id] = sorted.slice(0, 16); // Increase to 16 for better grouping
     });
 
     return res;
   }, [plans, problems, solvedProblemSet, attemptedProblemSet]);
 
-  // Load plans from local storage
-  useEffect(() => {
-    const saved = localStorage.getItem("cf_training_plans");
-    if (saved) {
-      try {
-        setPlans(JSON.parse(saved));
-      } catch (e) {
-        // ignore
-      }
-    } else {
-      // Default initial booster plans
-      const initial: TrainingPlan[] = [
-        { id: "1", title: "初级算法突围：贪心专项突破", targetRating: 1200, tags: ["greedy"], createdAt: Date.now(), completed: false },
-        { id: "2", title: "中级跃迁：动态规划核心强化", targetRating: 1500, tags: ["dp"], createdAt: Date.now() - 3600000, completed: false }
-      ];
-      setPlans(initial);
-      localStorage.setItem("cf_training_plans", JSON.stringify(initial));
-    }
-  }, []);
+  // Group problems by tags for accordion (blinds) display
+  const problemsGroupedByTag = useMemo(() => {
+    const res: Record<string, Record<string, CFProblem[]>> = {};
+    
+    Object.entries(matchingProblemsByPlan).forEach(([planId, probs]) => {
+      const plan = plans.find(p => p.id === planId);
+      const grouped: Record<string, CFProblem[]> = {};
+      
+      // Add an "全部" group that contains all problems
+      grouped["全部"] = [...probs];
+      
+      // Group problems by each tag
+      probs.forEach(prob => {
+        const probTags = prob.tags || [];
+        // Use plan's tags as priority if available
+        const relevantTags = plan?.tags.length ? plan.tags : probTags;
+        
+        relevantTags.forEach(tag => {
+          if (!grouped[tag]) grouped[tag] = [];
+          // Only add if not already in this group
+          const key = `${prob.contestId || ""}-${prob.index}`;
+          const alreadyExists = grouped[tag].some(p => `${p.contestId || ""}-${p.index}` === key);
+          if (!alreadyExists) grouped[tag].push(prob);
+        });
+        
+        // Also add to original tag groups
+        probTags.forEach(tag => {
+          if (!grouped[tag]) grouped[tag] = [];
+          const key = `${prob.contestId || ""}-${prob.index}`;
+          const alreadyExists = grouped[tag].some(p => `${p.contestId || ""}-${p.index}` === key);
+          if (!alreadyExists) grouped[tag].push(prob);
+        });
+      });
+      
+      res[planId] = grouped;
+    });
+    
+    return res;
+  }, [matchingProblemsByPlan, plans]);
 
   // Map progress counters to each plan dynamically from user submissions list!
   // Checks how many ACed problems match the plan's criteria (rating bounds and tag)
@@ -394,6 +591,62 @@ export default function TrainingChallenge({ submissions, problems = [], platform
     showTimedSuccess(`🎉 成功同步！大纲副本 【L${stage.stageNum}: ${translateTag(stage.suggestedTag)}】 已经载入下方挑战面板！`);
   };
 
+  // One-click register domestic contest training plan
+  const handleRegisterDomesticPlan = (plan: typeof DOMESTIC_CONTEST_PLANS[number]) => {
+    const title = `🏆 [国内赛事] ${plan.title}`;
+    
+    if (plans.some(p => p.title === title)) {
+      showTimedSuccess(`【${plan.title}】早已加载！请在下方控制台冲刺！🚀`);
+      return;
+    }
+
+    const newPlan: TrainingPlan = {
+      id: `domestic-plan-${plan.id}-${Date.now().toString()}`,
+      title,
+      targetRating: plan.targetRating,
+      tags: plan.tags,
+      createdAt: Date.now(),
+      completed: false
+    };
+
+    const updated = [newPlan, ...plans];
+    setPlans(updated);
+    localStorage.setItem("cf_training_plans", JSON.stringify(updated));
+    showTimedSuccess(`🎉 成功同步！【${plan.title}】已经载入下方挑战面板！`);
+  };
+
+  // Toggle tag expansion for accordion (blinds) effect
+  const toggleTagExpansion = (planId: string, tag: string) => {
+    setExpandedTags(prev => {
+      const current = new Set(prev[planId] || []);
+      if (current.has(tag)) {
+        current.delete(tag);
+      } else {
+        current.add(tag);
+      }
+      return { ...prev, [planId]: current };
+    });
+  };
+
+  // Initialize expanded tags when plans load (default expand "全部")
+  useEffect(() => {
+    if (plans.length > 0) {
+      const newExpandedTags: Record<string, Set<string>> = { ...expandedTags };
+      let hasNewPlan = false;
+      
+      plans.forEach(plan => {
+        if (!newExpandedTags[plan.id]) {
+          newExpandedTags[plan.id] = new Set(["全部"]);
+          hasNewPlan = true;
+        }
+      });
+      
+      if (hasNewPlan || Object.keys(expandedTags).length === 0) {
+        setExpandedTags(newExpandedTags);
+      }
+    }
+  }, [plans]);
+
   const showTimedSuccess = (msg: string) => {
     setSuccessMsg(msg);
     setTimeout(() => {
@@ -478,7 +731,117 @@ export default function TrainingChallenge({ submissions, problems = [], platform
         )}
       </div>
 
-      {/* 2. FIVE-STAGE TIMELINE SYLLABUS ROADMAP */}
+      {/* 2. 国内信息学竞赛训练题单 */}
+      <div className="bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm">
+        <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-1.5">
+          <Award className="text-red-500 w-4 h-4" />
+          国内信息学竞赛：CSP-J / CSP-S / NOIP 训练题单
+        </h2>
+        <p className="text-xs text-slate-400 mb-8">
+          针对国内 CSP-J、CSP-S、NOIP 等赛事的专项训练题单，点击「一键载入」可将训练计划加入下方的挑战书。
+        </p>
+
+        {/* Domestic Contest Plans Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {DOMESTIC_CONTEST_PLANS.map((plan) => {
+            // Calculate current progress for this domestic plan
+            let solvedCount = 0;
+            const seenProbs = new Set<string>();
+            submissions.forEach(sub => {
+              if (sub.verdict === "OK" && sub.problem) {
+                const key = `${sub.problem.contestId || ""}-${sub.problem.index}`;
+                if (!seenProbs.has(key) && 
+                    sub.problem.rating !== undefined && 
+                    sub.problem.rating >= plan.targetRating - 300 && 
+                    sub.problem.rating <= plan.targetRating + 200) {
+                  seenProbs.add(key);
+                  solvedCount++;
+                }
+              }
+            });
+            const progressPct = Math.min(100, Math.round((solvedCount / plan.targetCount) * 100));
+            const isCompleted = solvedCount >= plan.targetCount;
+            
+            return (
+              <div key={plan.id} className="relative group/card">
+                {/* Main Card */}
+                <div className={`bg-slate-50 border border-slate-150/60 rounded-2xl p-5 transition-all duration-300 hover:bg-white hover:shadow-xl hover:border-slate-200 flex flex-col gap-5 ${isCompleted ? "ring-2 ring-emerald-400" : ""}`}>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10.5px] font-bold px-2.5 py-0.5 rounded-full border ${plan.badgeColor}`}>
+                        {plan.title}
+                      </span>
+                      {isCompleted && (
+                        <span className="text-[10px] font-extrabold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                          🎖️ 已完成
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-slate-800 text-sm md:text-base group-hover/card:text-indigo-600 transition">
+                        {plan.subtitle}
+                      </h3>
+                      <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+                        {plan.description}
+                      </p>
+                    </div>
+
+                    {/* Topics Row */}
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">重点训练:</span>
+                      {plan.topics.map(t => (
+                        <span key={t} className="text-[10.5px] font-medium text-slate-600 bg-white border border-slate-150 rounded-lg px-2 py-0.5">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Progress & Actions */}
+                  <div className="border-t border-slate-200/80 pt-4 flex flex-col gap-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-baseline text-xs text-slate-505 font-medium">
+                        <span>当前完成进度</span>
+                        <span className="font-mono font-bold text-slate-800">
+                          {solvedCount} / {plan.targetCount} <span className="text-[10px] font-normal text-slate-400">题</span>
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-500 bg-gradient-to-r ${plan.gradient}`}
+                            style={{ width: `${progressPct}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-[10px] font-black text-slate-600 md:inline-block w-8 text-right">
+                          {progressPct}%
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                        <span>目标难度</span>
+                        <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">★ {plan.targetRating}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      id={`load-domestic-plan-${plan.id}`}
+                      type="button"
+                      onClick={() => handleRegisterDomesticPlan(plan)}
+                      className="w-full bg-gradient-to-r from-slate-800 to-slate-900 hover:from-slate-750 hover:to-slate-850 text-white font-bold text-xs py-2.5 px-3 rounded-xl transition duration-150 flex items-center justify-center gap-1.5 active:scale-95 shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      一键载入此训练计划
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 3. FIVE-STAGE TIMELINE SYLLABUS ROADMAP */}
       <div className="bg-white rounded-3xl border border-slate-100 p-6 md:p-8 shadow-sm">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-1.5">
           <Compass className="text-indigo-500 w-4 h-4" />
@@ -766,15 +1129,14 @@ export default function TrainingChallenge({ submissions, problems = [], platform
                         </div>
                       </div>
 
-                      {/* Dropdown Select Menu displaying training content directly */}
+                      {/* Accordion (Blinds) style tag-based problem display */}
                       <div className="pt-3 text-left">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-3">
                           <label 
-                            htmlFor={`problem-select-${plan.id}`} 
                             className="text-[11px] font-bold text-slate-500 flex items-center gap-1.5"
                           >
-                            <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
-                            🎯 极速攻坚特训题单 (下拉菜单选择题目):
+                            <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                            🎯 分类题单 (按算法标签折叠展开):
                           </label>
                           <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">
                             当前平台: {platform.toUpperCase()}
@@ -785,121 +1147,317 @@ export default function TrainingChallenge({ submissions, problems = [], platform
                           <div className="py-4 text-center text-xs text-slate-400 bg-white/50 rounded-xl border border-dashed border-slate-200">
                             🕒 线上题库正在同步，题目载入后将实时在此计算并呈现个性化特训题单...
                           </div>
-                        ) : matchedProbs.length === 0 ? (
-                          <div className="py-4 text-center text-xs text-slate-400 bg-white/50 rounded-xl border border-dashed border-slate-200">
-                            ℹ️ 暂无匹配 (★{plan.targetRating}分 难度) 的 "{plan.tags.map(translateTag).join(", ")}" 练习好题。
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {/* Standard Dropdown Select component */}
-                            <div className="relative">
-                              <select
-                                id={`problem-select-${plan.id}`}
-                                value={selectedProblemKeys[plan.id] || (matchedProbs[0] ? `${matchedProbs[0].contestId || ""}-${matchedProbs[0].index}` : "")}
-                                onChange={(e) => {
-                                  setSelectedProblemKeys(prev => ({
-                                    ...prev,
-                                    [plan.id]: e.target.value
-                                  }));
-                                }}
-                                className="w-full bg-white border border-slate-200 text-slate-800 text-xs font-bold rounded-xl pl-3 pr-10 py-2.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 transition shadow-sm cursor-pointer appearance-none"
-                              >
-                                {matchedProbs.map((prob) => {
-                                  const probKey = `${prob.contestId || ""}-${prob.index}`;
-                                  const isAC = solvedProblemSet.has(probKey);
-                                  const isAttempted = attemptedProblemSet.has(probKey);
-                                  const statusLabel = isAC ? " [已 AC ✅]" : isAttempted ? " [待重做/未挂 ❌]" : " [新推荐 🎯]";
+                        ) : (() => {
+                          // 优先使用后端数据
+                          const backendData = backendProblemsByPlan[plan.id];
+                          if (backendData && backendData.total_problems > 0) {
+                            // 使用后端按标签分类的题目数据
+                            const expandedPlanTags = expandedTags[plan.id] || new Set(["全部"]);
+                            
+                            return (
+                              <div className="space-y-2">
+                                {backendData.tags_order.filter(tag => backendData.problems_by_tag[tag]?.length > 0).map((tag) => {
+                                  const tagProbs = backendData.problems_by_tag[tag] || [];
+                                  const isExpanded = expandedPlanTags.has(tag);
+                                  const tagDisplayName = tag === "全部" ? "全部题目" : translateTag(tag);
+                                  const acCount = tagProbs.filter(p => solvedProblemSet.has(p.id)).length;
+                                  const backendCompletedCount = tagProbs.filter(p => p.completed).length;
+                                  
                                   return (
-                                    <option key={probKey} value={probKey}>
-                                      ★{prob.rating !== undefined ? prob.rating : "N/A"} - {prob.contestId ? `${prob.contestId}${prob.index}` : prob.index} {prob.name} {statusLabel}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              {/* Simple dropdown indicator styling */}
-                              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-slate-400">
-                                <ChevronDown className="w-4 h-4" />
-                              </div>
-                            </div>
-
-                            {/* Presentation Card showcasing the currently selected problem details */}
-                            {(() => {
-                              const activeKey = selectedProblemKeys[plan.id] || (matchedProbs[0] ? `${matchedProbs[0].contestId || ""}-${matchedProbs[0].index}` : "");
-                              const activeProb = matchedProbs.find(p => `${p.contestId || ""}-${p.index}` === activeKey) || matchedProbs[0];
-                              if (!activeProb) return null;
-
-                              const probKey = `${activeProb.contestId || ""}-${activeProb.index}`;
-                              const isAC = solvedProblemSet.has(probKey);
-                              const isAttempted = attemptedProblemSet.has(probKey);
-
-                              // Construct deep link correctly based on platforms
-                              let externalUrl = "";
-                              if (platform === "atcoder") {
-                                externalUrl = `https://atcoder.jp/contests/abc/tasks/abc${activeProb.contestId || ""}_${activeProb.index?.toLowerCase()}`;
-                              } else if (platform === "luogu") {
-                                externalUrl = `https://www.luogu.com.cn/problem/${activeProb.index}`;
-                              } else if (platform === "nowcoder") {
-                                externalUrl = `https://ac.nowcoder.com/acm/problem/${activeProb.index}`;
-                              } else {
-                                externalUrl = `https://codeforces.com/problemset/problem/${activeProb.contestId}/${activeProb.index}`;
-                              }
-
-                              return (
-                                <div className="p-3 bg-white border border-slate-100 rounded-xl hover:shadow-xs transition flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                      <span className="text-[10px] font-mono font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                                        {activeProb.contestId ? `${activeProb.contestId}${activeProb.index}` : activeProb.index}
-                                      </span>
-                                      <span className="text-[10px] font-mono text-slate-500 font-semibold bg-indigo-50/50 text-indigo-700 px-1.5 py-0.5 rounded">
-                                        ★ {activeProb.rating !== undefined ? activeProb.rating : "N/A"}
-                                      </span>
-
-                                      {/* Status badge: AC, Attempted, Todo */}
-                                      {isAC ? (
-                                        <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full border border-emerald-100">
-                                          已 AC（计入特训）
-                                        </span>
-                                      ) : isAttempted ? (
-                                        <span className="text-[9px] font-bold text-rose-500 bg-rose-50 px-1.5 py-0.5 rounded-full border border-rose-100 animate-pulse">
-                                          待重新攻关
-                                        </span>
-                                      ) : (
-                                        <span className="text-[9px] font-bold text-indigo-500 bg-indigo-50/60 px-1.5 py-0.5 rounded-full border border-indigo-100">
-                                          待挑战 / 新星推荐
-                                        </span>
+                                    <div key={tag} className="border border-slate-150 rounded-xl overflow-hidden bg-white">
+                                      {/* Tag header toggle */}
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleTagExpansion(plan.id, tag)}
+                                        className={`w-full px-3 py-2.5 flex items-center justify-between text-left transition-all duration-200 ${
+                                          isExpanded 
+                                            ? "bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-slate-100" 
+                                            : "bg-slate-50 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <div className={`p-1.5 rounded-lg ${tag === "全部" ? "bg-amber-100" : "bg-slate-100"}`}>
+                                            {tag === "全部" ? (
+                                              <Star className="w-3.5 h-3.5 text-amber-600" />
+                                            ) : (
+                                              <Tag className="w-3.5 h-3.5 text-slate-600" />
+                                            )}
+                                          </div>
+                                          <div>
+                                            <span className="text-xs font-bold text-slate-700">{tagDisplayName}</span>
+                                            <span className="text-[9px] text-slate-400 ml-1.5 font-mono">({tagProbs.length}题)</span>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                          {acCount > 0 && (
+                                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                                              ✓ {acCount} AC
+                                            </span>
+                                          )}
+                                          {backendCompletedCount > 0 && (
+                                            <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full">
+                                              ☑ {backendCompletedCount} 完成
+                                            </span>
+                                          )}
+                                          <ChevronDown
+                                            className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                                              isExpanded ? "rotate-180" : ""
+                                            }`}
+                                          />
+                                        </div>
+                                      </button>
+                                      
+                                      {/* Expandable problem list */}
+                                      {isExpanded && (
+                                        <div className="p-2.5 space-y-2 bg-white">
+                                          {tagProbs.slice(0, 6).map((prob) => {
+                                            const probKey = prob.id;
+                                            const isAC = solvedProblemSet.has(probKey);
+                                            const isAttempted = attemptedProblemSet.has(probKey);
+                                            const isBackendCompleted = prob.completed;
+                                            
+                                            // Construct deep link
+                                            let externalUrl = "";
+                                            if (platform === "atcoder") {
+                                              externalUrl = `https://atcoder.jp/contests/abc/tasks/abc${prob.contest_id || ""}_${prob.index?.toLowerCase()}`;
+                                            } else if (platform === "luogu") {
+                                              externalUrl = `https://www.luogu.com.cn/problem/${prob.index}`;
+                                            } else if (platform === "nowcoder") {
+                                              externalUrl = `https://ac.nowcoder.com/acm/problem/${prob.index}`;
+                                            } else {
+                                              externalUrl = `https://codeforces.com/problemset/problem/${prob.contest_id}/${prob.index}`;
+                                            }
+                                            
+                                            return (
+                                              <a
+                                                key={probKey}
+                                                href={externalUrl}
+                                                target="_blank"
+                                                rel="noreferrer noopener"
+                                                className={`block p-2 rounded-lg border transition-all duration-150 cursor-pointer ${
+                                                  isAC 
+                                                    ? "bg-emerald-50 border-emerald-150 hover:bg-emerald-100" 
+                                                    : isBackendCompleted 
+                                                      ? "bg-blue-50 border-blue-150 hover:bg-blue-100"
+                                                      : isAttempted 
+                                                        ? "bg-rose-50 border-rose-150 hover:bg-rose-100"
+                                                        : "bg-slate-50 border-slate-150 hover:bg-slate-100 hover:border-indigo-200"
+                                                }`}
+                                              >
+                                                <div className="flex items-start justify-between gap-2">
+                                                  <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                                      <span className="text-[10px] font-mono font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                                        {prob.contest_id ? `${prob.contest_id}${prob.index}` : prob.index}
+                                                      </span>
+                                                      <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">
+                                                        ★ {prob.rating !== undefined ? prob.rating : "N/A"}
+                                                      </span>
+                                                      {/* Status badge */}
+                                                      {isAC ? (
+                                                        <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-0.5">
+                                                          <CheckCircle className="w-3 h-3" />
+                                                          已 AC
+                                                        </span>
+                                                      ) : isBackendCompleted ? (
+                                                        <span className="text-[9px] font-bold text-blue-600 flex items-center gap-0.5">
+                                                          <CheckCircle2 className="w-3 h-3" />
+                                                          已完成
+                                                        </span>
+                                                      ) : isAttempted ? (
+                                                        <span className="text-[9px] font-bold text-rose-500 flex items-center gap-0.5 animate-pulse">
+                                                          <Zap className="w-3 h-3" />
+                                                          待重做
+                                                        </span>
+                                                      ) : null}
+                                                    </div>
+                                                    <div className="text-[11px] font-semibold text-slate-750 truncate leading-tight">
+                                                      {prob.name}
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex-shrink-0 text-right">
+                                                    <div className="flex items-center gap-1 text-[9px] text-slate-400 mb-1">
+                                                      <ExternalLink className="w-3 h-3" />
+                                                      挑战
+                                                    </div>
+                                                    <div className="flex gap-0.5 flex-wrap justify-end">
+                                                      {prob.tags?.slice(0, 2).map((t: string, i: number) => (
+                                                        <span key={i} className="text-[8px] text-slate-500 bg-slate-100 px-1 py-0.5 rounded">
+                                                          {translateTag(t)}
+                                                        </span>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              </a>
+                                            );
+                                          })}
+                                          {tagProbs.length > 6 && (
+                                            <div className="pt-1 text-center text-[10px] text-slate-400">
+                                              ...还有 {tagProbs.length - 6} 道更多题目
+                                            </div>
+                                          )}
+                                        </div>
                                       )}
                                     </div>
-
-                                    <div className="text-xs font-bold text-slate-750 truncate max-w-[320px] text-left" title={activeProb.name}>
-                                      {activeProb.name}
-                                    </div>
-
-                                    {/* Action tags */}
-                                    <div className="flex gap-1 mt-1 flex-wrap">
-                                      {activeProb.tags?.slice(0, 3).map((t, index) => (
-                                        <span key={index} className="text-[9px] text-slate-400 bg-slate-50 px-1 py-0.5 rounded border border-slate-100">
-                                          {translateTag(t)}
-                                        </span>
-                                      ))}
-                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          }
+                          
+                          // 使用本地数据（原有逻辑）
+                          const matchedProbs = matchingProblemsByPlan[plan.id] || [];
+                          if (matchedProbs.length === 0) {
+                            return (
+                              <div className="py-4 text-center text-xs text-slate-400 bg-white/50 rounded-xl border border-dashed border-slate-200">
+                                ℹ️ 暂无匹配 (★{plan.targetRating}分 难度) 的 "{plan.tags.map(translateTag).join(", ")}" 练习好题。
+                              </div>
+                            );
+                          }
+                          
+                          const groupedProbs = problemsGroupedByTag[plan.id] || { "全部": matchedProbs };
+                          const expandedPlanTags = expandedTags[plan.id] || new Set(["全部"]);
+                          
+                          return (
+                            <div className="space-y-2">
+                              {Object.entries(groupedProbs).filter(([_, probs]) => probs.length > 0).map(([tag, tagProbs]) => {
+                                const isExpanded = expandedPlanTags.has(tag);
+                                const tagDisplayName = tag === "全部" ? "全部题目" : translateTag(tag);
+                                
+                                return (
+                                  <div key={tag} className="border border-slate-150 rounded-xl overflow-hidden bg-white">
+                                    {/* Tag header toggle */}
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleTagExpansion(plan.id, tag)}
+                                      className={`w-full px-3 py-2.5 flex items-center justify-between text-left transition-all duration-200 ${
+                                        isExpanded 
+                                          ? "bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-slate-100" 
+                                          : "bg-slate-50 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <div className={`p-1.5 rounded-lg ${tag === "全部" ? "bg-amber-100" : "bg-slate-100"}`}>
+                                          {tag === "全部" ? (
+                                            <Star className="w-3.5 h-3.5 text-amber-600" />
+                                          ) : (
+                                            <Tag className="w-3.5 h-3.5 text-slate-600" />
+                                          )}
+                                        </div>
+                                        <div>
+                                          <span className="text-xs font-bold text-slate-700">{tagDisplayName}</span>
+                                          <span className="text-[9px] text-slate-400 ml-1.5 font-mono">({tagProbs.length}题)</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-1.5">
+                                        {(() => {
+                                          const acCount = tagProbs.filter(p => solvedProblemSet.has(`${p.contestId || ""}-${p.index}`)).length;
+                                          if (acCount > 0) {
+                                            return (
+                                              <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-full">
+                                                ✓ {acCount} AC
+                                              </span>
+                                            );
+                                          }
+                                          return null;
+                                        })()}
+                                        <ChevronDown
+                                          className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                                            isExpanded ? "rotate-180" : ""
+                                          }`}
+                                        />
+                                      </div>
+                                    </button>
+                                    
+                                    {/* Expandable problem list */}
+                                    {isExpanded && (
+                                      <div className="p-2.5 space-y-2 bg-white">
+                                        {tagProbs.slice(0, 6).map((prob) => {
+                                          const probKey = `${prob.contestId || ""}-${prob.index}`;
+                                          const isAC = solvedProblemSet.has(probKey);
+                                          const isAttempted = attemptedProblemSet.has(probKey);
+                                          
+                                          let externalUrl = "";
+                                          if (platform === "atcoder") {
+                                            externalUrl = `https://atcoder.jp/contests/abc/tasks/abc${prob.contestId || ""}_${prob.index?.toLowerCase()}`;
+                                          } else if (platform === "luogu") {
+                                            externalUrl = `https://www.luogu.com.cn/problem/${prob.index}`;
+                                          } else if (platform === "nowcoder") {
+                                            externalUrl = `https://ac.nowcoder.com/acm/problem/${prob.index}`;
+                                          } else {
+                                            externalUrl = `https://codeforces.com/problemset/problem/${prob.contestId}/${prob.index}`;
+                                          }
+                                          
+                                          return (
+                                            <a
+                                              key={probKey}
+                                              href={externalUrl}
+                                              target="_blank"
+                                              rel="noreferrer noopener"
+                                              className={`block p-2 rounded-lg border transition-all duration-150 cursor-pointer ${
+                                                isAC 
+                                                  ? "bg-emerald-50 border-emerald-150 hover:bg-emerald-100" 
+                                                  : isAttempted 
+                                                    ? "bg-rose-50 border-rose-150 hover:bg-rose-100"
+                                                    : "bg-slate-50 border-slate-150 hover:bg-slate-100 hover:border-indigo-200"
+                                              }`}
+                                            >
+                                              <div className="flex items-start justify-between gap-2">
+                                                <div className="flex-1 min-w-0">
+                                                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                                    <span className="text-[10px] font-mono font-bold text-slate-600 bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                                                      {prob.contestId ? `${prob.contestId}${prob.index}` : prob.index}
+                                                    </span>
+                                                    <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded">
+                                                      ★ {prob.rating !== undefined ? prob.rating : "N/A"}
+                                                    </span>
+                                                    {isAC ? (
+                                                      <span className="text-[9px] font-bold text-emerald-600 flex items-center gap-0.5">
+                                                        <CheckCircle className="w-3 h-3" />
+                                                        已 AC
+                                                      </span>
+                                                    ) : isAttempted ? (
+                                                      <span className="text-[9px] font-bold text-rose-500 flex items-center gap-0.5 animate-pulse">
+                                                        <Zap className="w-3 h-3" />
+                                                        待重做
+                                                      </span>
+                                                    ) : null}
+                                                  </div>
+                                                  <div className="text-[11px] font-semibold text-slate-750 truncate leading-tight">
+                                                    {prob.name}
+                                                  </div>
+                                                </div>
+                                                <div className="flex-shrink-0 text-right">
+                                                  <div className="flex items-center gap-1 text-[9px] text-slate-400 mb-1">
+                                                    <ExternalLink className="w-3 h-3" />
+                                                    挑战
+                                                  </div>
+                                                  <div className="flex gap-0.5 flex-wrap justify-end">
+                                                    {prob.tags?.slice(0, 2).map((t, i) => (
+                                                      <span key={i} className="text-[8px] text-slate-500 bg-slate-100 px-1 py-0.5 rounded">
+                                                        {translateTag(t)}
+                                                      </span>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              </div>
+                                            </a>
+                                          );
+                                        })}
+                                        {tagProbs.length > 6 && (
+                                          <div className="pt-1 text-center text-[10px] text-slate-400">
+                                            ...还有 {tagProbs.length - 6} 道更多题目
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
                                   </div>
-
-                                  <a
-                                    href={externalUrl}
-                                    target="_blank"
-                                    rel="noreferrer noopener"
-                                    className="flex-shrink-0 px-3.5 py-2 bg-indigo-600 text-white font-extrabold text-[11px] rounded-lg hover:bg-indigo-700 transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm"
-                                    title="开辟新标签页前往 OJ 挑战该特训题目"
-                                  >
-                                    <span>立即挑战</span>
-                                    <ExternalLink className="w-3 h-3" />
-                                  </a>
-                                </div>
-                              );
-                            })()}
-                          </div>
-                        )}
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

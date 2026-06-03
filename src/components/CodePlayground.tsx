@@ -207,7 +207,7 @@ export default function CodePlayground() {
   const [language, setLanguage] = useState<"cpp20" | "cpp17" | "cpp14" | "python3">("cpp20");
   const [code, setCode] = useState<string>("");
   const [input, setInput] = useState<string>("5\n10 20 30 40 50");
-  const [mode, setMode] = useState<"auto" | "ai" | "local">("auto");
+  const [mode, setMode] = useState<"auto" | "ai" | "local">("local");
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [result, setResult] = useState<RunResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -225,7 +225,7 @@ export default function CodePlayground() {
   // Editor current active file in duipai layout: "my" | "ans" | "gen"
   const [duipaiActiveEditor, setDuipaiActiveEditor] = useState<"my" | "ans" | "gen">("my");
   const [duipaiRounds, setDuipaiRounds] = useState<number>(10);
-  const [duipaiMode, setDuipaiMode] = useState<"auto" | "ai" | "local">("auto");
+  const [duipaiMode, setDuipaiMode] = useState<"auto" | "ai" | "local">("local");
   const [duipaiIsRunning, setDuipaiIsRunning] = useState<boolean>(false);
   const [duipaiResult, setDuipaiResult] = useState<DuipaiResult | null>(null);
   const [duipaiError, setDuipaiError] = useState<string | null>(null);
@@ -429,11 +429,11 @@ export default function CodePlayground() {
 
               {/* Core selection */}
               <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-850">
-                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">编译器:</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">执行模式:</span>
                 {[
-                  { id: "auto", label: "自动" },
-                  { id: "ai", label: "AI 编译" },
-                  { id: "local", label: "物理" }
+                  { id: "local", label: "⚡ 本地编译" },
+                  { id: "auto", label: "🔄 自动模式" },
+                  { id: "ai", label: "🧠 AI 模拟" }
                 ].map((v) => (
                   <button
                     key={v.id}
@@ -441,7 +441,11 @@ export default function CodePlayground() {
                     onClick={() => setMode(v.id as any)}
                     className={`px-2 py-0.5 text-[9px] font-extrabold rounded-md transition ${
                       mode === v.id
-                        ? "bg-amber-550 text-slate-950 font-black shadow-sm"
+                        ? v.id === "local" 
+                          ? "bg-emerald-500 text-white font-black shadow-sm"
+                          : v.id === "ai"
+                          ? "bg-purple-500 text-white font-black shadow-sm"
+                          : "bg-amber-500 text-slate-950 font-black shadow-sm"
                         : "text-slate-400 hover:text-white"
                     }`}
                   >
@@ -754,17 +758,30 @@ export default function CodePlayground() {
             {/* General Configurations */}
             <div className="flex items-center gap-3 flex-wrap text-xs text-slate-300">
               {/* Core Engine Select */}
-              <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">对拍内核:</span>
-                <select
-                  value={duipaiMode}
-                  onChange={(e) => setDuipaiMode(e.target.value as any)}
-                  className="bg-slate-900 border border-slate-850 text-slate-200 text-xs font-bold rounded-xl px-2.5 py-1.5 cursor-pointer hover:bg-slate-850 focus:outline-none"
-                >
-                  <option value="auto">自动探寻 (物理优先)</option>
-                  <option value="ai">AI 逻辑模拟 (无环境限制)</option>
-                  <option value="local">硬件物理沙盒 (极速稳定)</option>
-                </select>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] font-bold text-slate-400 uppercase">对拍模式:</span>
+                {[
+                  { id: "local", label: "⚡ 本地沙盒" },
+                  { id: "auto", label: "🔄 自动模式" },
+                  { id: "ai", label: "🧠 AI 对拍" }
+                ].map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setDuipaiMode(v.id as any)}
+                    className={`px-2 py-0.5 text-[9px] font-extrabold rounded-md transition ${
+                      duipaiMode === v.id
+                        ? v.id === "local" 
+                          ? "bg-emerald-500 text-white font-black shadow-sm"
+                          : v.id === "ai"
+                          ? "bg-purple-500 text-white font-black shadow-sm"
+                          : "bg-amber-500 text-slate-950 font-black shadow-sm"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    {v.label}
+                  </button>
+                ))}
               </div>
 
               {/* Rounds Select */}

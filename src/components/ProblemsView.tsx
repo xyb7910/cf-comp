@@ -3,7 +3,7 @@ import { CFProblem, CFSubmission, SavedProblem } from "../types";
 import { translateTag, TAG_TRANSLATIONS, getProblemUrl } from "../utils";
 import { renderTextWithMath } from "./MathRenderer";
 import AIMarkdownRenderer from "./AIMarkdownRenderer";
-import { Search, Filter, BookOpen, Star, HelpCircle, Loader2, Sparkles, AlertCircle, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, Bookmark, Save, Pencil, Trash } from "lucide-react";
+import { Search, Filter, BookOpen, Star, HelpCircle, Loader2, Sparkles, AlertCircle, ExternalLink, RefreshCw, ChevronLeft, ChevronRight, CheckCircle2, Bookmark, Save, Pencil, Trash, Calendar } from "lucide-react";
 
 interface ProblemsViewProps {
   problems: CFProblem[];
@@ -14,7 +14,8 @@ interface ProblemsViewProps {
   onSaveProblemLocal: (prob: SavedProblem) => void;
   savedProblems: SavedProblem[];
   platform: string;
-  onPlatformChange: (platform: "codeforces" | "atcoder" | "luogu" | "nowcoder") => void;
+  onPlatformChange: (platform: "codeforces" | "atcoder" | "luogu" | "nowcoder" | "custom") => void;
+  ojRegion: "international" | "domestic";
 }
 
 export default function ProblemsView({
@@ -27,6 +28,7 @@ export default function ProblemsView({
   savedProblems,
   platform,
   onPlatformChange,
+  ojRegion,
 }: ProblemsViewProps) {
   const platformName = useMemo(() => {
     switch (platform) {
@@ -34,6 +36,7 @@ export default function ProblemsView({
       case "atcoder": return "AtCoder";
       case "luogu": return "洛谷 (Luogu)";
       case "nowcoder": return "牛客 (Nowcoder)";
+      case "custom": return "我的题目";
       default: return "Codeforces";
     }
   }, [platform]);
@@ -247,6 +250,24 @@ export default function ProblemsView({
     }
   };
 
+  // Format created time for custom problems
+  const formatCreatedAt = (timestamp: number): string => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    
+    const minutes = Math.floor(diff / 60000);
+    const hours = Math.floor(diff / 3600000);
+    const days = Math.floor(diff / 86400000);
+    
+    if (minutes < 1) return "刚刚";
+    if (minutes < 60) return `${minutes}分钟前`;
+    if (hours < 24) return `${hours}小时前`;
+    if (days < 7) return `${days}天前`;
+    
+    const date = new Date(timestamp);
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
+  
   // Sync / AutoSave Notes to standard storage
   const handleSaveNotes = () => {
     if (!activeExplainProblem) return;
@@ -361,10 +382,14 @@ export default function ProblemsView({
               {/* Inline OJ Switcher */}
               <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
                 {([
-                  { id: "codeforces", label: "CF" },
-                  { id: "atcoder", label: "ATC" },
-                  { id: "luogu", label: "洛谷" },
-                  { id: "nowcoder", label: "牛客" }
+                  ...(ojRegion === "international" ? [
+                    { id: "codeforces", label: "CF" },
+                    { id: "atcoder", label: "ATC" }
+                  ] : [
+                    { id: "luogu", label: "洛谷" },
+                    { id: "nowcoder", label: "牛客" }
+                  ]),
+                  { id: "custom", label: "我的" }
                 ] as const).map((oj) => (
                   <button
                     key={oj.id}
@@ -381,16 +406,18 @@ export default function ProblemsView({
                 ))}
               </div>
 
-              <button
-                id="refreshProblemsBtn"
-                type="button"
-                onClick={() => onRefreshProblems(platform)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 font-medium bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition"
-                disabled={loadingProblems}
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${loadingProblems ? 'animate-spin' : ''}`} />
-                更新题库
-              </button>
+              {platform !== "custom" && (
+                <button
+                  id="refreshProblemsBtn"
+                  type="button"
+                  onClick={() => onRefreshProblems(platform)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-600 font-medium bg-slate-50 hover:bg-slate-100 rounded-lg border border-slate-200 transition"
+                  disabled={loadingProblems}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingProblems ? 'animate-spin' : ''}`} />
+                  更新题库
+                </button>
+              )}
             </div>
           </div>
 
@@ -578,6 +605,14 @@ export default function ProblemsView({
                           <span className="text-[10px] bg-slate-900 text-amber-400 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-0.5">
                             <Bookmark className="w-2.5 h-2.5 fill-current" />
                             错题本 ({localStatus.status === "solved" ? "已击破" : localStatus.status === "attempting" ? "挣扎底" : "TODO"})
+                          </span>
+                        )}
+                        
+                        {/* Created time for custom problems */}
+                        {platform === "custom" && prob.createdAt && (
+                          <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
+                            <Calendar className="w-2.5 h-2.5" />
+                            {formatCreatedAt(prob.createdAt)}
                           </span>
                         )}
                       </div>
