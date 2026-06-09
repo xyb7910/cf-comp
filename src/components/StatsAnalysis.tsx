@@ -7,7 +7,7 @@ import { PieChart, ListFilter, Target, Flame, BarChart4, TrendingUp, AlertTriang
 interface StatsAnalysisProps {
   submissions: CFSubmission[];
   username: string;
-  platform?: "codeforces" | "atcoder" | "luogu" | "nowcoder";
+  platform?: "codeforces" | "atcoder" | "luogu" | "nowcoder" | "custom";
 }
 
 interface HeatmapCell {
@@ -667,7 +667,7 @@ export default function StatsAnalysis({ submissions, username, platform = "codef
       const yMax = cy + rMax * Math.sin(angle);
 
       // Determine text anchor based on angle
-      let textAnchor = "middle";
+      let textAnchor: "start" | "middle" | "end" = "middle";
       if (Math.cos(angle) > 0.2) {
         textAnchor = "start";
       } else if (Math.cos(angle) < -0.2) {

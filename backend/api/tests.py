@@ -14,7 +14,21 @@ class HealthCheckTest(TestCase):
 
 class UserProfileTests(APITestCase):
     def setUp(self):
-        self.user_data = {
+        self.register_data = {
+            'username': 'testuser',
+            'password': 'testpassword123',
+            'password2': 'testpassword123',
+            'email': 'test@example.com'
+        }
+        self.client.post('/api/auth/register/', self.register_data, format='json')
+        login_response = self.client.post('/api/auth/login/', {
+            'username': 'testuser',
+            'password': 'testpassword123'
+        }, format='json')
+        self.token = login_response.json()['access']
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.token}')
+        
+        self.user_profile_data = {
             'handle': 'tourist',
             'platform': 'codeforces',
             'rating': 3979,
@@ -22,7 +36,7 @@ class UserProfileTests(APITestCase):
         }
     
     def test_create_user_profile(self):
-        response = self.client.post('/api/users/', self.user_data, format='json')
+        response = self.client.post('/api/users/profiles/', self.user_profile_data, format='json')
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(UserProfile.objects.count(), 1)
 
@@ -45,6 +59,20 @@ class ProblemTests(APITestCase):
 
 class SavedProblemTests(APITestCase):
     def setUp(self):
+        self.register_data = {
+            'username': 'testuser2',
+            'password': 'testpassword123',
+            'password2': 'testpassword123',
+            'email': 'test2@example.com'
+        }
+        self.client.post('/api/auth/register/', self.register_data, format='json')
+        login_response = self.client.post('/api/auth/login/', {
+            'username': 'testuser2',
+            'password': 'testpassword123'
+        }, format='json')
+        self.token = login_response.json()['access']
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.token}')
+        
         self.saved_data = {
             'id': '1923-A',
             'contest_id': 1923,

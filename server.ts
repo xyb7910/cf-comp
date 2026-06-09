@@ -16,8 +16,8 @@ const execPromise = promisify(exec);
 
 // Load environment variables with priority: .env.local > .env
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envLocalPath = path.join(__dirname, '.env.local');
-const envPath = path.join(__dirname, '.env');
+const envLocalPath = path.join(__dirname, '../.env.local');
+const envPath = path.join(__dirname, '../.env');
 
 if (fs.existsSync(envLocalPath)) {
   dotenv.config({ path: envLocalPath });
@@ -875,7 +875,7 @@ app.post("/api/explain", async (req, res) => {
   else if (pf === "luogu") platformName = "洛谷 (Luogu)";
   else if (pf === "nowcoder") platformName = "牛客 (Nowcoder)";
 
-  const prompt = `你是一位资深的 ACM/ICPC 竞赛金牌教练，精通算法与数据结构。现在请你针对题目提供专业、系统的解题辅导。
+  const prompt = `嘿，同学！我是你的算法竞赛教练。今天我们来攻克这道题，我会一步步引导你找到解题思路。
 
 **题目信息：**
 - **题号**: \`${problemCode}\`
@@ -883,34 +883,44 @@ app.post("/api/explain", async (req, res) => {
 - **难度**: ${rating || '未设定'} 分
 - **标签**: ${tags ? tags.join(", ") : '无'}
 
-**输出要求：**
-请以**结构化 Markdown** 格式输出解题思路卡片，数学公式使用 LaTeX（如 $O(N \\log N)$），代码块使用指定语言，具体包含以下部分：
+好，让我们开始吧！请仔细阅读以下分析，跟着我的思路走。
 
 ---
 
-## 🎯 核心观察
+## 🎯 教练带你审题
 
-分析题目本质，提炼最关键的洞察：
-- 题目背后的数学模型或数据结构
-- 约束条件（如 $N \\le 10^5$）暗示的时间复杂度要求
-- 从问题描述到算法选择的思维跳跃点
+同学，拿到一道题，首先要做的就是**看透题目本质**。让我们一起分析：
 
-## 📈 算法路径
+- **问题背后的数学模型或数据结构**：这道题看起来是关于什么的？是数组操作？图论？还是动态规划？
+- **约束条件暗示**：题目给出的 $N \\le 10^5$ 告诉我们什么？$O(N^2)$ 的算法肯定不行，我们需要找到更高效的解法。
+- **思维跳跃点**：从问题描述到算法选择，这里的关键桥梁是什么？很多同学卡在这一步，没关系，跟着我慢慢想。
 
-清晰的解题步骤：
-1. 第一步：预处理/数据结构初始化
-2. 第二步：核心算法执行
-3. 第三步：结果处理与优化
+## 📈 一步步来，别着急
 
-## 📐 数学推导
+解题就像爬山，我们一步一步来：
 
-如适用，请推导关键公式：
-- 递推关系：$dp[i] = dp[i-1] + dp[i-2]$
-- 几何性质、图论定理等
+1. **第一步：预处理/数据结构初始化**
+   - 首先，我们需要准备什么数据？用什么数据结构来存储？
+   - 有没有什么预处理可以减少后续的计算量？
+
+2. **第二步：核心算法执行**
+   - 这是最关键的一步。根据我们的分析，应该使用什么算法？
+   - 算法的核心逻辑是什么？如何一步步实现？
+
+3. **第三步：结果处理与优化**
+   - 算法跑完了，结果对吗？有没有什么边界情况需要处理？
+   - 能不能再优化一下时间或空间复杂度？
+
+## 📐 数学推导（如果需要）
+
+有些题目需要一些数学推导，别害怕，跟着我来：
+
+- **递推关系**：比如动态规划的状态转移方程 $dp[i] = dp[i-1] + dp[i-2]$
+- **几何性质、图论定理**：如果涉及到这些，我们需要回顾一下相关的知识
 
 ## 💻 代码框架
 
-提供 **${language || 'C++'}** 的核心代码框架：
+好，现在我们来看代码怎么写。我会给你一个框架，你可以自己填充细节：
 
 \`\`\`${language?.toLowerCase() || 'cpp'}
 // 关键数据结构定义
@@ -922,16 +932,20 @@ app.post("/api/explain", async (req, res) => {
 - 时间：$O(N \\log N)$
 - 空间：$O(N)$
 
-## ⚠️ 边界陷阱
+## ⚠️ 踩坑指南
 
-需要特别注意的边界情况：
-- $N = 1$ 或 $K = 0$ 的特殊处理
-- 数据溢出风险（需用 long long）
-- 空输入、无解情况的判定
+这是我根据经验总结的一些**常见陷阱**，你一定要注意：
+
+- **边界情况**：$N = 1$ 或 $K = 0$ 时会怎么样？数组为空呢？
+- **数据溢出**：int 够不够用？要不要用 long long？
+- **特殊输入**：题目有没有什么特殊的输入情况？比如全是负数、全是零？
 
 ---
 
-**提示**: 以启发式教学为主，避免直接给出完整答案，引导学生自主思考！`;
+**💪 教练寄语：**
+算法竞赛需要不断练习和积累。每一道题都是一次成长的机会。不要急于看答案，先自己思考，实在想不出来再来看我的分析。记住，**思考的过程比答案更重要**！
+
+加油，你可以的！`;
 
   try {
     const provider = getActiveProvider();
@@ -1681,7 +1695,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(Number(PORT), "0.0.0.0", () => {
     console.log(`[Codeforces Companion Backend] Server is running on http://localhost:${PORT}`);
   });
 }

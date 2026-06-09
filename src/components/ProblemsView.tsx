@@ -394,7 +394,7 @@ export default function ProblemsView({
                   <button
                     key={oj.id}
                     type="button"
-                    onClick={() => onPlatformChange(oj.id)}
+                    onClick={() => onPlatformChange(oj.id as "codeforces" | "atcoder" | "luogu" | "nowcoder" | "custom")}
                     className={`px-3 py-1 text-xs font-bold rounded-lg transition-all duration-150 cursor-pointer ${
                       platform === oj.id
                         ? "bg-amber-500 text-slate-900 shadow-sm"

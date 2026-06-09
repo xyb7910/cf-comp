@@ -4,7 +4,17 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { useAuth } from '../context/AuthContext';
 
-// 算法模板数据类型
+interface AlgorithmTag {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  color: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface AlgorithmTemplate {
   id: string;
   category: string;
@@ -15,7 +25,7 @@ interface AlgorithmTemplate {
   time_complexity: string;
   space_complexity: string;
   code: string;
-  tags: string[];
+  tags: AlgorithmTag[];
   usage: string;
   example_input?: string;
   example_output?: string;
@@ -116,10 +126,13 @@ const customOneDark = {
 const AlgorithmTemplates = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('全部');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'fallback' | 'failed'>(() => 'idle');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [templates, setTemplates] = useState<AlgorithmTemplate[]>([]);
   const [categories, setCategories] = useState<string[]>(['全部']);
+  const [allTags, setAllTags] = useState<AlgorithmTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user, isAuthenticated } = useAuth();
@@ -162,6 +175,35 @@ const AlgorithmTemplates = () => {
     fetchTemplates();
   }, [selectedCategory]);
 
+  // 获取所有模板的标签（不受分类影响）
+  useEffect(() => {
+    const fetchAllTags = async () => {
+      try {
+        const response = await fetch('/api/algorithm-templates/');
+        if (!response.ok) {
+          throw new Error('获取模板标签失败');
+        }
+        const data = await response.json();
+        const templatesData = data.results || data || [];
+        
+        const tagMap = new Map<string, AlgorithmTag>();
+        templatesData.forEach((template: any) => {
+          const tags = template.tags || [];
+          tags.forEach((tag: AlgorithmTag) => {
+            if (!tagMap.has(tag.id)) {
+              tagMap.set(tag.id, tag);
+            }
+          });
+        });
+        setAllTags(Array.from(tagMap.values()));
+      } catch (err) {
+        console.error('Error fetching tags:', err);
+      }
+    };
+
+    fetchAllTags();
+  }, []);
+
   // 获取所有分类
   useEffect(() => {
     const fetchCategories = async () => {
@@ -181,21 +223,79 @@ const AlgorithmTemplates = () => {
 
   // 前端搜索过滤
   const filteredTemplates = templates.filter(template => {
-    if (!searchTerm) return true;
-    
     const searchLower = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = !searchTerm || (
       template.name.toLowerCase().includes(searchLower) ||
       template.description.toLowerCase().includes(searchLower) ||
-      template.tags.some(tag => tag.toLowerCase().includes(searchLower)) ||
-      template.time_complexity.toLowerCase().includes(searchLower)
+      template.detailed_description.toLowerCase().includes(searchLower) ||
+      template.tags.some(tag => tag.name.toLowerCase().includes(searchLower)) ||
+      template.time_complexity.toLowerCase().includes(searchLower) ||
+      template.category.toLowerCase().includes(searchLower)
     );
+    
+    const matchesTags = selectedTags.length === 0 || 
+      selectedTags.every(selectedTag => 
+        template.tags.some(tag => tag.id === selectedTag || tag.name === selectedTag)
+      );
+    
+    return matchesSearch && matchesTags;
   });
 
-  const handleCopyCode = (template: AlgorithmTemplate) => {
-    navigator.clipboard.writeText(template.code);
+  const handleCopyCode = async (template: AlgorithmTemplate) => {
     setCopiedId(template.id);
-    setTimeout(() => setCopiedId(null), 2000);
+    
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(template.code);
+        setCopyStatus('success');
+        console.log('[Copy] Clipboard API succeeded');
+      } else {
+        throw new Error('Clipboard API not available');
+      }
+    } catch {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = template.code;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '0';
+        textarea.style.width = '1px';
+        textarea.style.height = '1px';
+        textarea.style.opacity = '0';
+        textarea.setAttribute('readonly', '');
+        document.body.appendChild(textarea);
+        
+        const selection = window.getSelection();
+        const previousSelection = selection ? selection.rangeCount > 0 ? selection.getRangeAt(0) : null : null;
+        
+        textarea.select();
+        textarea.setSelectionRange(0, template.code.length);
+        
+        const execResult = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        
+        if (previousSelection && selection) {
+          selection.removeAllRanges();
+          selection.addRange(previousSelection);
+        }
+        
+        console.log('[Copy] execCommand result:', execResult);
+        
+        if (execResult) {
+          setCopyStatus('fallback');
+        } else {
+          throw new Error('execCommand returned false');
+        }
+      } catch (err) {
+        console.error('[Copy] Failed to copy code:', err);
+        setCopyStatus('failed');
+      }
+    }
+    
+    setTimeout(() => {
+      setCopiedId(null);
+      setCopyStatus('idle');
+    }, 2500);
   };
 
   const getDifficultyColor = (diff: string) => {
@@ -234,34 +334,62 @@ const AlgorithmTemplates = () => {
 
         {/* Search & Filter */}
         <div className="bg-white rounded-2xl shadow-lg shadow-slate-200/50 p-6 mb-8 border border-slate-200">
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Search Bar */}
-            <div className="flex-1 relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="搜索模板、描述、标签或时间复杂度..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all text-slate-800 font-medium"
-              />
-            </div>
-
-            {/* Category Filter */}
-            <div className="flex gap-2 flex-wrap">
-              {categories.map(category => (
+          <div className="flex-1 relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="搜索模板、描述、标签或时间复杂度..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-12 pr-4 py-3.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 outline-none transition-all text-slate-800 font-medium"
+            />
+          </div>
+          
+          {/* Tags Filter */}
+          <div className="mt-4 pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                <FileCode className="w-4 h-4" />
+                算法标签
+              </h4>
+              {selectedTags.length > 0 && (
                 <button
-                  key={category}
-                  onClick={() => setSelectedCategory(category)}
-                  className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                    selectedCategory === category
-                      ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-md'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
+                  onClick={() => setSelectedTags([])}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
                 >
-                  {category}
+                  清除筛选
                 </button>
-              ))}
+              )}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {allTags.map(tag => {
+                const isSelected = selectedTags.includes(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    onClick={() => {
+                      if (isSelected) {
+                        setSelectedTags(selectedTags.filter(t => t !== tag.id));
+                      } else {
+                        setSelectedTags([...selectedTags, tag.id]);
+                      }
+                    }}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-all ${
+                      isSelected
+                        ? 'shadow-md'
+                        : 'hover:scale-105'
+                    }`}
+                    style={{
+                      backgroundColor: isSelected ? `${tag.color}30` : `${tag.color}10`,
+                      color: tag.color,
+                      borderColor: isSelected ? `${tag.color}60` : `${tag.color}30`
+                    }}
+                  >
+                    {isSelected && <span className="mr-1">✓</span>}
+                    {tag.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -319,8 +447,16 @@ const AlgorithmTemplates = () => {
                               {template.category}
                             </span>
                             {template.tags.map(tag => (
-                              <span key={tag} className="text-xs font-medium px-3 py-1 bg-slate-100 text-slate-700 rounded-full border border-slate-200">
-                                #{tag}
+                              <span 
+                                key={tag.id} 
+                                className="text-xs font-medium px-3 py-1 rounded-full border"
+                                style={{
+                                  backgroundColor: `${tag.color}15`,
+                                  color: tag.color,
+                                  borderColor: `${tag.color}40`
+                                }}
+                              >
+                                #{tag.name}
                               </span>
                             ))}
                           </div>
@@ -372,13 +508,33 @@ const AlgorithmTemplates = () => {
                     </div>
                     <button
                       onClick={() => handleCopyCode(template)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-[#21252b] hover:bg-[#1e2127] rounded-lg transition-all text-xs font-bold border border-[#3e4451]"
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all text-xs font-bold border ${
+                        copiedId === template.id
+                          ? copyStatus === 'success'
+                            ? 'bg-[#98c379]/20 border-[#98c379]/50'
+                            : copyStatus === 'fallback'
+                            ? 'bg-[#d19a66]/20 border-[#d19a66]/50'
+                            : 'bg-[#e06c75]/20 border-[#e06c75]/50'
+                          : 'bg-[#21252b] hover:bg-[#1e2127] border-[#3e4451]'
+                      }`}
                     >
                       {copiedId === template.id ? (
-                        <>
-                          <Check className="w-4 h-4 text-[#98c379]" />
-                          <span className="text-[#98c379]">已复制</span>
-                        </>
+                        copyStatus === 'success' ? (
+                          <>
+                            <Check className="w-4 h-4 text-[#98c379]" />
+                            <span className="text-[#98c379]">复制成功</span>
+                          </>
+                        ) : copyStatus === 'fallback' ? (
+                          <>
+                            <Check className="w-4 h-4 text-[#d19a66]" />
+                            <span className="text-[#d19a66]">已尝试复制</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4 text-[#e06c75]" />
+                            <span className="text-[#e06c75]">复制失败</span>
+                          </>
+                        )
                       ) : (
                         <>
                           <Copy className="w-4 h-4 text-[#abb2bf]" />

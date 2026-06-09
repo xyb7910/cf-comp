@@ -24,7 +24,7 @@ export default function AppWithAuth() {
 }
 
 function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading } = useAuth();
   // Ref for training dropdown
   const trainingDropdownRef = useRef<HTMLDivElement>(null);
   
@@ -53,7 +53,17 @@ function App() {
   const [problemsError, setProblemsError] = useState<string | null>(null);
 
   // Tab state: "dashboard", "problems", "notebook", "challenge", "sandbox", "custom", "profile", "templates"
-  const [activeTab, setActiveTab] = useState<"dashboard" | "problems" | "notebook" | "challenge" | "sandbox" | "custom" | "profile" | "templates">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "problems" | "notebook" | "challenge" | "sandbox" | "custom" | "profile" | "templates">(() => {
+    const saved = localStorage.getItem("cf_active_tab");
+    if (saved) {
+      try {
+        return saved as any;
+      } catch (e) {
+        // ignore
+      }
+    }
+    return "dashboard";
+  });
   
   // 训练中心下拉菜单状态
   const [isTrainingDropdownOpen, setIsTrainingDropdownOpen] = useState(false);
@@ -75,12 +85,17 @@ function App() {
     };
   }, []);
   
-  // 未登录时，强制只显示仪表盘
+  // 保存 activeTab 到 localStorage
   useEffect(() => {
-    if (!isAuthenticated && activeTab !== "dashboard") {
+    localStorage.setItem("cf_active_tab", activeTab);
+  }, [activeTab]);
+  
+  // 未登录时，强制只显示仪表盘（等待认证状态加载完成后执行）
+  useEffect(() => {
+    if (!loading && !isAuthenticated && activeTab !== "dashboard") {
       setActiveTab("dashboard");
     }
-  }, [isAuthenticated, activeTab]);
+  }, [isAuthenticated, activeTab, loading]);
 
   // Auth modal state
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -347,9 +362,9 @@ function App() {
               </div>
             </div>
 
-            {/* Navigation Controls - 只在登录后显示全部导航 */}
+            {/* Navigation Controls - 仅登录后显示 */}
             {isAuthenticated && (
-              <nav className="flex-1 w-full lg:w-auto">
+            <nav className="flex-1 w-full lg:w-auto">
                 <div className="flex items-center gap-1 bg-slate-900/70 p-1.5 rounded-2xl border border-slate-700/50 backdrop-blur-xl">
                   <button
                     id="tabDashboard"
@@ -364,6 +379,8 @@ function App() {
                     <LayoutDashboard className="w-4.5 h-4.5" />
                     <span>仪表盘</span>
                   </button>
+                  {isAuthenticated && (
+                    <>
                   <button
                     id="tabProblems"
                     type="button"
@@ -501,20 +518,22 @@ function App() {
                     <span>代码自测</span>
                   </button>
                   <button
-                    id="tabProfile"
-                    type="button"
-                    onClick={() => setActiveTab("profile")}
-                    className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${
-                      activeTab === "profile" 
-                        ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/25 scale-[1.02]" 
-                        : "text-slate-300 hover:text-white hover:bg-slate-800/50"
-                    }`}
-                  >
-                    <UserIcon className="w-4.5 h-4.5" />
-                    <span>个人中心</span>
-                  </button>
+                      id="tabProfile"
+                      type="button"
+                      onClick={() => setActiveTab("profile")}
+                      className={`flex items-center gap-2 px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 ${
+                        activeTab === "profile" 
+                          ? "bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/25 scale-[1.02]" 
+                          : "text-slate-300 hover:text-white hover:bg-slate-800/50"
+                      }`}
+                    >
+                      <UserIcon className="w-4.5 h-4.5" />
+                      <span>个人中心</span>
+                    </button>
+                    </>
+                  )}
                 </div>
-              </nav>
+            </nav>
             )}
             
             {/* User Menu */}
@@ -530,240 +549,221 @@ function App() {
 
       {/* Main Content Workspace */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
-        {/* 未登录时的欢迎界面 */}
-        {!isAuthenticated && (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-32 h-32 rounded-3xl bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center font-black text-white text-4xl shadow-2xl mb-8">
-              CF
+        {/* Unified Platform Switcher (OJ Selector) - 只在分类题库页面显示 */}
+        {activeTab === "problems" && (
+          <div className="relative overflow-hidden mb-8">
+            {/* 装饰性背景元素 */}
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-2xl"></div>
+            <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-amber-500/10 to-rose-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+            <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-emerald-500/10 to-cyan-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+            
+            <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 p-6 bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-700/50 shadow-2xl">
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-tr from-amber-500 to-orange-500 rounded-2xl blur-md opacity-30 animate-pulse"></div>
+                  <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center font-black text-white text-xl shadow-lg">
+                    🎯
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white to-amber-200">
+                    训练星域
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    🌍 四大主流算法评测平台，一键切换，极速同步
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-5">
+                {/* Region Selector Tab */}
+                <div className="bg-slate-950/60 p-1.5 rounded-2xl border border-slate-700/50 backdrop-blur-sm flex gap-1">
+                  <button
+                    id="region-intl-btn"
+                    type="button"
+                    onClick={() => {
+                      if (activePlatform !== "custom") {
+                        setOjRegion("international");
+                        setActivePlatform("codeforces");
+                      }
+                    }}
+                    className={`px-4 py-2 text-sm font-bold rounded-xl transition-all duration-200 ${
+                      ojRegion === "international" && activePlatform !== "custom"
+                        ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/25 scale-[1.02]"
+                        : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                    }`}
+                  >
+                    🌐 国外 OJ
+                  </button>
+                  <button
+                    id="region-dom-btn"
+                    type="button"
+                    onClick={() => {
+                      if (activePlatform !== "custom") {
+                        setOjRegion("domestic");
+                        setActivePlatform("luogu");
+                      }
+                    }}
+                    className={`px-4 py-2 text-sm font-bold rounded-xl transition-all duration-200 ${
+                      ojRegion === "domestic" && activePlatform !== "custom"
+                        ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/25 scale-[1.02]"
+                        : "text-slate-400 hover:text-white hover:bg-slate-800/50"
+                    }`}
+                  >
+                    🇨🇳 国内 OJ
+                  </button>
+                </div>
+
+                {/* Platform Selector Items */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {[
+                    ...(ojRegion === "international" ? [
+                      { id: "codeforces", name: "Codeforces", dot: "bg-rose-500" },
+                      { id: "atcoder", name: "AtCoder", dot: "bg-indigo-400" },
+                    ] : []),
+                    ...(ojRegion === "domestic" ? [
+                      { id: "luogu", name: "洛谷", dot: "bg-emerald-400" },
+                      { id: "nowcoder", name: "牛客", dot: "bg-cyan-400" },
+                    ] : []),
+                    { id: "custom", name: "我的题目", dot: "bg-amber-400" },
+                  ].map((plat) => {
+                    const isSelected = activePlatform === plat.id;
+                    return (
+                      <button
+                        key={plat.id}
+                        id={`platform-btn-${plat.id}`}
+                        onClick={() => setActivePlatform(plat.id as any)}
+                        className={`px-5 py-3 text-sm font-bold rounded-xl transition-all duration-200 border flex items-center justify-center gap-3 active:scale-95 ${
+                          isSelected
+                            ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 border-transparent shadow-lg shadow-amber-500/25 scale-[1.02]"
+                            : "bg-slate-950/60 text-slate-300 border-slate-700/50 hover:bg-slate-800/70 hover:border-slate-600"
+                        }`}
+                      >
+                        <div className={`w-3 h-3 rounded-full ${isSelected ? "bg-slate-950 animate-ping" : plat.dot}`}></div>
+                        <span className="font-medium">{plat.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
-            <h1 className="text-3xl font-black text-slate-900 mb-4">欢迎来到 Codeforces Companion</h1>
-            <p className="text-slate-600 text-center mb-8 max-w-2xl">
-              智能算法解法研读 • 多维度分类晋级里程碑<br />
-              请登录后使用完整功能
-            </p>
           </div>
         )}
 
-        {/* 登录后的完整功能界面 */}
-        {isAuthenticated && (
-          <>
-            {/* Unified Platform Switcher (OJ Selector) - 只在分类题库页面显示 */}
-            {activeTab === "problems" && (
-              <div className="relative overflow-hidden mb-8">
-                {/* 装饰性背景元素 */}
-                <div className="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-850 to-slate-900 rounded-2xl"></div>
-                <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-amber-500/10 to-rose-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-                <div className="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-emerald-500/10 to-cyan-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
-                
-                <div className="relative flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6 p-6 bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-slate-700/50 shadow-2xl">
-                  <div className="flex items-center gap-4">
-                    <div className="relative">
-                      <div className="absolute inset-0 bg-gradient-to-tr from-amber-500 to-orange-500 rounded-2xl blur-md opacity-30 animate-pulse"></div>
-                      <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center font-black text-white text-xl shadow-lg">
-                        🎯
-                      </div>
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-white to-amber-200">
-                        训练星域
-                      </h3>
-                      <p className="text-xs text-slate-400 mt-1">
-                        🌍 四大主流算法评测平台，一键切换，极速同步
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-5">
-                    {/* Region Selector Tab */}
-                    <div className="bg-slate-950/60 p-1.5 rounded-2xl border border-slate-700/50 backdrop-blur-sm flex gap-1">
-                      <button
-                        id="region-intl-btn"
-                        type="button"
-                        onClick={() => {
-                          if (activePlatform !== "custom") {
-                            setOjRegion("international");
-                            setActivePlatform("codeforces");
-                          }
-                        }}
-                        className={`px-4 py-2 text-sm font-bold rounded-xl transition-all duration-200 ${
-                          ojRegion === "international" && activePlatform !== "custom"
-                            ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/25 scale-[1.02]"
-                            : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-                        }`}
-                      >
-                        🌐 国外 OJ
-                      </button>
-                      <button
-                        id="region-dom-btn"
-                        type="button"
-                        onClick={() => {
-                          if (activePlatform !== "custom") {
-                            setOjRegion("domestic");
-                            setActivePlatform("luogu");
-                          }
-                        }}
-                        className={`px-4 py-2 text-sm font-bold rounded-xl transition-all duration-200 ${
-                          ojRegion === "domestic" && activePlatform !== "custom"
-                            ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black shadow-lg shadow-amber-500/25 scale-[1.02]"
-                            : "text-slate-400 hover:text-white hover:bg-slate-800/50"
-                        }`}
-                      >
-                        🇨🇳 国内 OJ
-                      </button>
-                    </div>
-
-                    {/* Platform Selector Items */}
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {[
-                        ...(ojRegion === "international" ? [
-                          { id: "codeforces", name: "Codeforces", dot: "bg-rose-500" },
-                          { id: "atcoder", name: "AtCoder", dot: "bg-indigo-400" },
-                        ] : []),
-                        ...(ojRegion === "domestic" ? [
-                          { id: "luogu", name: "洛谷", dot: "bg-emerald-400" },
-                          { id: "nowcoder", name: "牛客", dot: "bg-cyan-400" },
-                        ] : []),
-                        { id: "custom", name: "我的题目", dot: "bg-amber-400" },
-                      ].map((plat) => {
-                        const isSelected = activePlatform === plat.id;
-                        return (
-                          <button
-                            key={plat.id}
-                            id={`platform-btn-${plat.id}`}
-                            onClick={() => setActivePlatform(plat.id as any)}
-                            className={`px-5 py-3 text-sm font-bold rounded-xl transition-all duration-200 border flex items-center justify-center gap-3 active:scale-95 ${
-                              isSelected
-                                ? "bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 border-transparent shadow-lg shadow-amber-500/25 scale-[1.02]"
-                                : "bg-slate-950/60 text-slate-300 border-slate-700/50 hover:bg-slate-800/70 hover:border-slate-600"
-                            }`}
-                          >
-                            <div className={`w-3 h-3 rounded-full ${isSelected ? "bg-slate-950 animate-ping" : plat.dot}`}></div>
-                            <span className="font-medium">{plat.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
+        {/* Render respective tab contents */}
+        {activeTab === "dashboard" && (
+          <div className="flex flex-col gap-8">
+            {/* 仪表盘页面平台选择器 */}
+            <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-bold text-slate-800">选择查询平台</h3>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setOjRegion("international");
+                    setActivePlatform("codeforces");
+                  }}
+                  className={`flex-1 px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 border flex items-center justify-center gap-2 ${
+                    activePlatform === "codeforces"
+                      ? "bg-gradient-to-r from-rose-500 to-orange-500 text-white border-transparent shadow-md"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                  }`}
+                >
+                  <div className={`w-3 h-3 rounded-full ${activePlatform === "codeforces" ? "bg-white" : "bg-rose-500"}`}></div>
+                  <span>Codeforces</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setOjRegion("international");
+                    setActivePlatform("atcoder");
+                  }}
+                  className={`flex-1 px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 border flex items-center justify-center gap-2 ${
+                    activePlatform === "atcoder"
+                      ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white border-transparent shadow-md"
+                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
+                  }`}
+                >
+                  <div className={`w-3 h-3 rounded-full ${activePlatform === "atcoder" ? "bg-white" : "bg-indigo-400"}`}></div>
+                  <span>AtCoder</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Search handler */}
+            <UserSearch
+              onSearch={fetchUserProfileData}
+              loading={loadingUser}
+              error={userError}
+              activeHandle={activeHandle}
+              activePlatform={activePlatform}
+            />
+
+            {/* Profile display details */}
+            {user && (
+              <UserProfile
+                user={user}
+                ratingHistory={ratingHistory}
+                platform={activePlatform}
+              />
             )}
 
-            {/* Render respective tab contents */}
-            {activeTab === "dashboard" && (
-              <div className="flex flex-col gap-8">
-                {/* 仪表盘页面平台选择器 */}
-                <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="text-sm font-bold text-slate-800">选择查询平台</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setOjRegion("international");
-                        setActivePlatform("codeforces");
-                      }}
-                      className={`flex-1 px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 border flex items-center justify-center gap-2 ${
-                        activePlatform === "codeforces"
-                          ? "bg-gradient-to-r from-rose-500 to-orange-500 text-white border-transparent shadow-md"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
-                      }`}
-                    >
-                      <div className={`w-3 h-3 rounded-full ${activePlatform === "codeforces" ? "bg-white" : "bg-rose-500"}`}></div>
-                      <span>Codeforces</span>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setOjRegion("international");
-                        setActivePlatform("atcoder");
-                      }}
-                      className={`flex-1 px-4 py-2.5 text-sm font-bold rounded-xl transition-all duration-200 border flex items-center justify-center gap-2 ${
-                        activePlatform === "atcoder"
-                          ? "bg-gradient-to-r from-indigo-500 to-blue-500 text-white border-transparent shadow-md"
-                          : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300"
-                      }`}
-                    >
-                      <div className={`w-3 h-3 rounded-full ${activePlatform === "atcoder" ? "bg-white" : "bg-indigo-400"}`}></div>
-                      <span>AtCoder</span>
-                    </button>
-                  </div>
-                </div>
-                
-                {/* Search handler */}
-                <UserSearch
-                  onSearch={fetchUserProfileData}
-                  loading={loadingUser}
-                  error={userError}
-                  activeHandle={activeHandle}
-                  activePlatform={activePlatform}
-                />
-
-                {/* Profile display details */}
-                {user && (
-                  <UserProfile
-                    user={user}
-                    ratingHistory={ratingHistory}
-                    platform={activePlatform}
-                  />
-                )}
-
-                {/* Submissions detailed statistics graph dashboard */}
-                {submissions.length > 0 && (
-                  <StatsAnalysis
-                    submissions={submissions}
-                    username={activeHandle}
-                    platform={activePlatform}
-                  />
-                )}
-              </div>
-            )}
-
-            {activeTab === "problems" && (
-              <ProblemsView
-                problems={getCurrentProblems()}
+            {/* Submissions detailed statistics graph dashboard */}
+            {submissions.length > 0 && (
+              <StatsAnalysis
                 submissions={submissions}
-                loadingProblems={loadingProblems}
                 username={activeHandle}
-                onRefreshProblems={fetchActiveProblemset}
-                onSaveProblemLocal={handleSaveProblemLocal}
-                savedProblems={savedProblems}
-                platform={activePlatform}
-                onPlatformChange={setActivePlatform}
-                ojRegion={ojRegion}
-              />
-            )}
-
-            {activeTab === "notebook" && (
-              <SavedProblems
-                savedProblems={savedProblems}
-                submissions={submissions}
-                onRemoveSavedProblem={(id) => handleSaveProblemLocal({ id, index: "", name: "", tags: [], savedAt: 0, status: "todo" })}
-                onUpdateSavedProblem={handleSaveProblemLocal}
-                onSelectProblem={handleSelectProblemFromNotebook}
-              />
-            )}
-
-            {activeTab === "challenge" && (
-              <TrainingChallenge
-                submissions={submissions}
-                problems={problems}
                 platform={activePlatform}
               />
             )}
+          </div>
+        )}
 
-            {activeTab === "custom" && (
-              <CustomProblems onProblemsChange={(newProblems) => setCustomProblems(newProblems)} />
-            )}
+        {activeTab === "problems" && (
+          <ProblemsView
+            problems={getCurrentProblems()}
+            submissions={submissions}
+            loadingProblems={loadingProblems}
+            username={activeHandle}
+            onRefreshProblems={fetchActiveProblemset}
+            onSaveProblemLocal={handleSaveProblemLocal}
+            savedProblems={savedProblems}
+            platform={activePlatform}
+            onPlatformChange={setActivePlatform}
+            ojRegion={ojRegion}
+          />
+        )}
 
-            {activeTab === "sandbox" && (
-              <CodePlayground />
-            )}
-            {activeTab === "templates" && (
-              <AlgorithmTemplates />
-            )}
-            {activeTab === "profile" && (
-              <UserSettings />
-            )}
-          </>
+        {activeTab === "notebook" && (
+          <SavedProblems
+            savedProblems={savedProblems}
+            submissions={submissions}
+            onRemoveSavedProblem={(id) => handleSaveProblemLocal({ id, index: "", name: "", tags: [], savedAt: 0, status: "todo" })}
+            onUpdateSavedProblem={handleSaveProblemLocal}
+            onSelectProblem={handleSelectProblemFromNotebook}
+          />
+        )}
+
+        {activeTab === "challenge" && (
+          <TrainingChallenge
+            submissions={submissions}
+            problems={problems}
+            platform={activePlatform}
+          />
+        )}
+
+        {activeTab === "custom" && (
+          <CustomProblems onProblemsChange={(newProblems) => setCustomProblems(newProblems)} />
+        )}
+
+        {activeTab === "sandbox" && (
+          <CodePlayground />
+        )}
+        {activeTab === "templates" && (
+          <AlgorithmTemplates />
+        )}
+        {activeTab === "profile" && (
+          <UserSettings />
         )}
       </main>
 

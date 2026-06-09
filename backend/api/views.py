@@ -266,18 +266,23 @@ class TrainingPlanViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.is_authenticated:
-            # 登录用户可以看到模板（无用户的计划）和自己的计划
-            return TrainingPlan.objects.filter(models.Q(user__isnull=True) | models.Q(user=user))
+            # 登录用户可以看到：模板（无用户的计划）、admin创建的计划、自己的计划
+            return TrainingPlan.objects.filter(
+                models.Q(user__isnull=True) | 
+                models.Q(user__is_superuser=True) | 
+                models.Q(user=user)
+            )
         else:
-            # 未登录用户只能看到模板（无用户的计划）
-            return TrainingPlan.objects.filter(user__isnull=True)
+            # 未登录用户可以看到：模板（无用户的计划）、admin创建的计划
+            return TrainingPlan.objects.filter(
+                models.Q(user__isnull=True) | 
+                models.Q(user__is_superuser=True)
+            )
     
-    def perform_create(self, serializer):
-        # 如果用户未登录，创建一个无用户的模板
-        if self.request.user.is_authenticated:
-            serializer.save(user=self.request.user)
-        else:
-            serializer.save()
+    def create(self, request, *args, **kwargs):
+        if request.user.is_authenticated:
+            request.data['user'] = request.user.username
+        return super().create(request, *args, **kwargs)
     
     @action(detail=False, methods=['get'])
     def active(self, request):
@@ -305,7 +310,14 @@ class TrainingPlanViewSet(viewsets.ModelViewSet):
         if not problem_id:
             return Response({"error": "problem_id is required"}, status=400)
         
-        problem = get_object_or_404(Problem, id=problem_id)
+        if '-' in problem_id:
+            parts = problem_id.rsplit('-', 1)
+            contest_id = int(parts[0]) if parts[0].isdigit() else None
+            index = parts[1]
+            problem = get_object_or_404(Problem, contest_id=contest_id, index=index)
+        else:
+            problem = get_object_or_404(Problem, id=problem_id)
+        
         progress, created = TrainingProgress.objects.get_or_create(
             training_plan=training_plan,
             problem=problem
@@ -323,10 +335,20 @@ class TrainingPlanViewSet(viewsets.ModelViewSet):
         if not problem_id:
             return Response({"error": "problem_id is required"}, status=400)
         
-        deleted, _ = TrainingProgress.objects.filter(
-            training_plan=training_plan,
-            problem_id=problem_id
-        ).delete()
+        if '-' in problem_id:
+            parts = problem_id.rsplit('-', 1)
+            contest_id = int(parts[0]) if parts[0].isdigit() else None
+            index = parts[1]
+            deleted, _ = TrainingProgress.objects.filter(
+                training_plan=training_plan,
+                problem__contest_id=contest_id,
+                problem__index=index
+            ).delete()
+        else:
+            deleted, _ = TrainingProgress.objects.filter(
+                training_plan=training_plan,
+                problem_id=problem_id
+            ).delete()
         
         if deleted:
             return Response({"message": "Problem removed from training plan"})
@@ -381,7 +403,7 @@ class TrainingPlanViewSet(viewsets.ModelViewSet):
                 problems_by_tag[tag].append(problem_data)
         
         # 添加训练计划的目标标签分类（优先显示）
-        priority_tags = training_plan.tags
+        priority_tags = [tag.name for tag in training_plan.tags.all()]
         ordered_tags = ['全部'] + priority_tags + [t for t in problems_by_tag.keys() if t not in priority_tags and t != '全部']
         
         # 按优先级排序返回
@@ -462,7 +484,7 @@ class AlgorithmTemplateViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(difficulty=difficulty)
         if tags:
             for tag in tags:
-                queryset = queryset.filter(tags__contains=[tag])
+                queryset = queryset.filter(tags__name=tag)
         
         return queryset
     

@@ -6,7 +6,7 @@ interface UserSearchProps {
   loading: boolean;
   error: string | null;
   activeHandle: string;
-  activePlatform?: "codeforces" | "atcoder" | "luogu" | "nowcoder";
+  activePlatform?: "codeforces" | "atcoder" | "luogu" | "nowcoder" | "custom";
 }
 
 const PLATFORM_FAMOUS: Record<string, { handle: string; name: string }[]> = {

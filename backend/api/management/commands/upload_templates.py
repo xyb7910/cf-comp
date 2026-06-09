@@ -3,7 +3,7 @@ Django Management Command: 上传算法模板数据
 Usage: python manage.py upload_templates
 """
 from django.core.management.base import BaseCommand
-from api.models import AlgorithmTemplate
+from api.models import AlgorithmTemplate, AlgorithmTag
 
 
 class Command(BaseCommand):
@@ -309,10 +309,19 @@ int main() {
         self.stdout.write(self.style.HTTP_INFO("📤 上传算法模板..."))
         self.stdout.write("-" * 40)
         for template_data in templates:
+            tags_data = template_data.pop('tags', [])
+            
             template, created = AlgorithmTemplate.objects.update_or_create(
                 id=template_data["id"],
                 defaults=template_data
             )
+            
+            tag_objects = []
+            for tag_name in tags_data:
+                tag, _ = AlgorithmTag.objects.get_or_create(name=tag_name)
+                tag_objects.append(tag)
+            template.tags.set(tag_objects)
+            
             if created:
                 self.stdout.write(self.style.SUCCESS(f"✅ 创建: {template.name}"))
             else:

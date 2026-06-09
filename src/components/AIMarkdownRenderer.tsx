@@ -163,8 +163,11 @@ export default function AIMarkdownRenderer({ content }: AIMarkdownRendererProps)
           const currentIndex = codeBlockIndex.current++;
           const textContent = React.Children.toArray(children).map(child => {
             if (typeof child === 'string') return child;
-            if (React.isValidElement(child) && typeof child.props.children === 'string') {
-              return child.props.children;
+            if (React.isValidElement(child)) {
+              const props = child.props as { children?: string };
+              if (typeof props.children === 'string') {
+                return props.children;
+              }
             }
             return '';
           }).join('');

@@ -190,22 +190,13 @@ class ProblemForm(forms.ModelForm):
 
 class TrainingPlanForm(forms.ModelForm):
     """训练计划表单"""
-    tags = forms.CharField(
-        widget=TagsWidget,
-        required=False,
-        help_text='多个标签用逗号分隔'
-    )
     
     class Meta:
         model = TrainingPlan
         fields = '__all__'
-    
-    def clean_tags(self):
-        """将逗号分隔的字符串转换为列表"""
-        tags_str = self.cleaned_data['tags']
-        if tags_str:
-            return [tag.strip() for tag in tags_str.split(',') if tag.strip()]
-        return []
+        widgets = {
+            'tags': forms.CheckboxSelectMultiple(),
+        }
 
 
 class SavedProblemForm(forms.ModelForm):
@@ -315,9 +306,9 @@ class SavedProblemAdmin(admin.ModelAdmin):
 @admin.register(TrainingPlan)
 class TrainingPlanAdmin(admin.ModelAdmin):
     form = TrainingPlanForm
-    list_display = ['id', 'title', 'target_rating', 'is_official', 'get_progress', 'created_at', 'completed']
+    list_display = ['id', 'title', 'target_rating', 'get_tags', 'is_official', 'get_progress', 'created_at', 'completed']
     list_filter = ['completed', 'target_rating', IsOfficialFilter]
-    search_fields = ['title', 'id', 'tags']
+    search_fields = ['title', 'id']
     inlines = [TrainingProgressInline]
     save_on_top = True
     
@@ -326,6 +317,15 @@ class TrainingPlanAdmin(admin.ModelAdmin):
         return obj.user is None
     is_official.boolean = True
     is_official.short_description = '官方计划'
+    
+    def get_tags(self, obj):
+        """显示标签列表"""
+        tags = list(obj.tags.all())
+        if tags:
+            tag_names = [tag.name for tag in tags[:5]]
+            return ', '.join(tag_names) + (f', +{len(tags)-5}' if len(tags) > 5 else '')
+        return '-'
+    get_tags.short_description = '标签'
     
     def get_progress(self, obj):
         """显示完成进度"""
@@ -342,7 +342,7 @@ class TrainingPlanAdmin(admin.ModelAdmin):
     
     def get_queryset(self, request):
         """优化查询，预加载关联数据"""
-        return super().get_queryset(request).prefetch_related('progresses__problem')
+        return super().get_queryset(request).prefetch_related('progresses__problem', 'tags')
 
 
 @admin.register(TrainingProgress)
@@ -429,15 +429,12 @@ class AlgorithmTemplateTagsWidget(TagsWidget):
 
 class AlgorithmTemplateForm(forms.ModelForm):
     """算法模板表单"""
-    tags = forms.CharField(
-        widget=AlgorithmTemplateTagsWidget,
-        required=False,
-        help_text='多个标签用逗号分隔'
-    )
     
     class Meta:
         model = AlgorithmTemplate
-        fields = '__all__'
+        fields = ['id', 'category', 'name', 'difficulty', 'description', 'detailed_description',
+                  'time_complexity', 'space_complexity', 'code', 'usage', 'example_input',
+                  'example_output', 'is_public', 'tags']
         widgets = {
             'code': forms.Textarea(attrs={
                 'rows': 20,
@@ -448,14 +445,8 @@ class AlgorithmTemplateForm(forms.ModelForm):
                 'rows': 8,
                 'cols': 80,
             }),
+            'tags': forms.CheckboxSelectMultiple(),
         }
-    
-    def clean_tags(self):
-        """将逗号分隔的字符串转换为列表"""
-        tags_str = self.cleaned_data['tags']
-        if tags_str:
-            return [tag.strip() for tag in tags_str.split(',') if tag.strip()]
-        return []
 
 
 @admin.register(AlgorithmTemplate)
@@ -463,14 +454,15 @@ class AlgorithmTemplateAdmin(admin.ModelAdmin):
     form = AlgorithmTemplateForm
     list_display = ['name', 'category', 'difficulty', 'get_tags', 'created_at', 'updated_at']
     list_filter = ['category', 'difficulty', 'is_public']
-    search_fields = ['name', 'description', 'tags']
+    search_fields = ['name', 'description']
     save_on_top = True
     
     def get_tags(self, obj):
         """显示标签列表"""
-        if obj.tags:
-            tags = obj.tags[:5]
-            return ', '.join(tags) + (f', +{len(obj.tags)-5}' if len(obj.tags) > 5 else '')
+        tags = list(obj.tags.all())
+        if tags:
+            tag_names = [tag.name for tag in tags[:5]]
+            return ', '.join(tag_names) + (f', +{len(tags)-5}' if len(tags) > 5 else '')
         return '-'
     get_tags.short_description = '标签'
 

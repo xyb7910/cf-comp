@@ -76,15 +76,35 @@ class TrainingProgressSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class AlgorithmTagNameField(serializers.Field):
+    def to_representation(self, value):
+        return [tag.name for tag in value.all()]
+    
+    def to_internal_value(self, data):
+        if not isinstance(data, list):
+            raise serializers.ValidationError("tags must be a list of strings")
+        
+        tags = []
+        for tag_name in data:
+            if not isinstance(tag_name, str):
+                raise serializers.ValidationError(f"Each tag must be a string, got {type(tag_name)}")
+            tag, created = AlgorithmTag.objects.get_or_create(name=tag_name)
+            tags.append(tag)
+        
+        return tags
+
+
 # 精简版训练计划序列化器（用于列表）
 class TrainingPlanListSerializer(serializers.ModelSerializer):
     completion_rate = serializers.SerializerMethodField()
     total_problems = serializers.SerializerMethodField()
+    tags = AlgorithmTagNameField(required=False)
     
     class Meta:
         model = TrainingPlan
-        fields = ['id', 'title', 'target_rating', 'tags', 'description', 'completed', 
-                 'created_at', 'completion_rate', 'total_problems']
+        fields = ['id', 'title', 'subtitle', 'target_rating', 'target_count', 'tags', 
+                 'badge_color', 'gradient', 'description', 'completed', 'created_at', 
+                 'completion_rate', 'total_problems']
     
     def get_completion_rate(self, obj):
         total = obj.progresses.count()
@@ -102,11 +122,14 @@ class TrainingPlanSerializer(serializers.ModelSerializer):
     progresses = TrainingProgressSerializer(many=True, read_only=True)
     completion_rate = serializers.SerializerMethodField()
     total_problems = serializers.SerializerMethodField()
+    tags = AlgorithmTagNameField(required=False)
+    user = serializers.SlugRelatedField(slug_field='username', queryset=User.objects.all(), required=False, allow_null=True)
     
     class Meta:
         model = TrainingPlan
-        fields = '__all__'
-        read_only_fields = ('user',)
+        fields = ['id', 'title', 'subtitle', 'target_rating', 'target_count', 'tags', 
+                 'badge_color', 'gradient', 'description', 'completed', 'created_at', 
+                 'deadline', 'user', 'progresses', 'completion_rate', 'total_problems']
     
     def get_completion_rate(self, obj):
         total = obj.progresses.count()
@@ -117,6 +140,25 @@ class TrainingPlanSerializer(serializers.ModelSerializer):
     
     def get_total_problems(self, obj):
         return obj.progresses.count()
+    
+    def create(self, validated_data):
+        tags_data = validated_data.pop('tags', [])
+        plan = TrainingPlan.objects.create(**validated_data)
+        
+        for tag in tags_data:
+            plan.tags.add(tag)
+        
+        return plan
+    
+    def update(self, instance, validated_data):
+        tags_data = validated_data.pop('tags', None)
+        
+        if tags_data is not None:
+            instance.tags.clear()
+            for tag in tags_data:
+                instance.tags.add(tag)
+        
+        return super().update(instance, validated_data)
 
 
 class CustomProblemSerializer(serializers.ModelSerializer):
@@ -133,6 +175,8 @@ class AlgorithmTagSerializer(serializers.ModelSerializer):
 
 
 class AlgorithmTemplateSerializer(serializers.ModelSerializer):
+    tags = AlgorithmTagSerializer(many=True, read_only=True)
+    
     class Meta:
         model = AlgorithmTemplate
         fields = '__all__'
