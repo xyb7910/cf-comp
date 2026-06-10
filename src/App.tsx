@@ -13,7 +13,7 @@ import AlgorithmTemplates from "./components/AlgorithmTemplates";
 import AuthModal from "./components/AuthModal";
 import UserMenu from "./components/UserMenu";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import { LayoutDashboard, BookOpen, BookMarked, Target, Sparkles, Terminal, Flame, Info, Star, User as UserIcon, ChevronDown, ChevronUp, Code2 } from "lucide-react";
+import { LayoutDashboard, BookOpen, BookMarked, Target, Sparkles, Terminal, Flame, Info, Star, User as UserIcon, ChevronDown, ChevronUp, Code2, CheckCircle } from "lucide-react";
 
 export default function AppWithAuth() {
   return (
@@ -90,12 +90,72 @@ function App() {
     localStorage.setItem("cf_active_tab", activeTab);
   }, [activeTab]);
   
+  // 用户配置的平台账号
+  const [userPlatformProfiles, setUserPlatformProfiles] = useState<Record<string, { handle: string; rating?: number }>>({});
+  const [hasDefaultProfile, setHasDefaultProfile] = useState(false);
+
   // 未登录时，强制只显示仪表盘（等待认证状态加载完成后执行）
   useEffect(() => {
     if (!loading && !isAuthenticated && activeTab !== "dashboard") {
       setActiveTab("dashboard");
     }
   }, [isAuthenticated, activeTab, loading]);
+
+  // 用户登录后，获取用户配置的平台账号
+  useEffect(() => {
+    const fetchUserProfiles = async () => {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return;
+
+      try {
+        const response = await fetch('/api/users/profiles/default/', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (response.ok) {
+          const profiles = await response.json();
+          setUserPlatformProfiles(profiles);
+          
+          // 如果用户配置了平台账号，设置为默认搜索目标
+          if (Object.keys(profiles).length > 0) {
+            setHasDefaultProfile(true);
+            // 优先选择有rating的平台，或者默认选择第一个配置的平台
+            const platforms = Object.keys(profiles);
+            let preferredPlatform = platforms[0];
+            for (const platform of platforms) {
+              if (profiles[platform].rating) {
+                preferredPlatform = platform;
+                break;
+              }
+            }
+            
+            setActivePlatform(preferredPlatform as any);
+            setHandles(prev => ({
+              ...prev,
+              [preferredPlatform]: profiles[preferredPlatform].handle
+            }));
+            
+            // 如果当前没有选中的handle，自动加载用户的账号信息
+            if (!activeHandle || activeHandle === "jiangly") {
+              setActiveHandle(profiles[preferredPlatform].handle);
+              fetchUserProfileData(profiles[preferredPlatform].handle, preferredPlatform);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('获取用户平台配置失败:', error);
+      }
+    };
+
+    if (isAuthenticated && !loading) {
+      fetchUserProfiles();
+    } else if (!isAuthenticated) {
+      setUserPlatformProfiles({});
+      setHasDefaultProfile(false);
+    }
+  }, [isAuthenticated, loading]);
 
   // Auth modal state
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -653,6 +713,30 @@ function App() {
         {/* Render respective tab contents */}
         {activeTab === "dashboard" && (
           <div className="flex flex-col gap-8">
+            {/* 用户已配置平台账号提示 */}
+            {isAuthenticated && hasDefaultProfile && userPlatformProfiles[activePlatform] && (
+              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-bold text-emerald-800">已配置平台账号</div>
+                  <div className="text-xs text-emerald-600">
+                    当前默认展示您的 {activePlatform === 'codeforces' ? 'Codeforces' : 
+                      activePlatform === 'atcoder' ? 'AtCoder' : 
+                      activePlatform === 'luogu' ? '洛谷' : '牛客'} 账号: {userPlatformProfiles[activePlatform].handle}
+                    {userPlatformProfiles[activePlatform].rating && ` (Rating: ${userPlatformProfiles[activePlatform].rating})`}
+                  </div>
+                </div>
+                <button
+                  onClick={() => fetchUserProfileData(userPlatformProfiles[activePlatform].handle, activePlatform)}
+                  className="px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
+                >
+                  刷新数据
+                </button>
+              </div>
+            )}
+
             {/* 仪表盘页面平台选择器 */}
             <div className="bg-white rounded-2xl border border-slate-100 p-4 shadow-sm">
               <div className="flex items-center justify-between mb-3">
@@ -672,6 +756,9 @@ function App() {
                 >
                   <div className={`w-3 h-3 rounded-full ${activePlatform === "codeforces" ? "bg-white" : "bg-rose-500"}`}></div>
                   <span>Codeforces</span>
+                  {userPlatformProfiles['codeforces'] && (
+                    <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">✓</span>
+                  )}
                 </button>
                 <button
                   onClick={() => {
@@ -686,6 +773,9 @@ function App() {
                 >
                   <div className={`w-3 h-3 rounded-full ${activePlatform === "atcoder" ? "bg-white" : "bg-indigo-400"}`}></div>
                   <span>AtCoder</span>
+                  {userPlatformProfiles['atcoder'] && (
+                    <span className="text-xs bg-white/20 px-2 py-0.5 rounded-full">✓</span>
+                  )}
                 </button>
               </div>
             </div>

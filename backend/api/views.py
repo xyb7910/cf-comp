@@ -178,6 +178,36 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         profiles = UserProfile.objects.filter(user=request.user, platform=platform)
         serializer = self.get_serializer(profiles, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def default(self, request):
+        """获取用户默认的平台账号（按平台分类）"""
+        profiles = UserProfile.objects.filter(user=request.user)
+        result = {}
+        for profile in profiles:
+            if profile.platform not in result:
+                result[profile.platform] = {
+                    'handle': profile.handle,
+                    'rating': profile.rating,
+                    'max_rating': profile.max_rating,
+                    'id': profile.id
+                }
+        return Response(result)
+    
+    @action(detail=False, methods=['get'])
+    def primary(self, request):
+        """获取用户主平台账号（优先返回有rating的）"""
+        profiles = UserProfile.objects.filter(user=request.user)
+        if not profiles:
+            return Response({})
+        
+        primary_profile = profiles.first()
+        for profile in profiles:
+            if profile.rating and (not primary_profile.rating or profile.rating > primary_profile.rating):
+                primary_profile = profile
+        
+        serializer = self.get_serializer(primary_profile)
+        return Response(serializer.data)
 
 
 class ProblemViewSet(viewsets.ModelViewSet):
@@ -585,3 +615,109 @@ def health_check(request):
         "status": "healthy",
         "message": "Codeforces Companion Backend API"
     })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def user_info(request):
+    """获取用户信息（支持多个平台）"""
+    platform = request.query_params.get('platform', 'codeforces')
+    handle = request.query_params.get('handle', '')
+    
+    if not handle:
+        return Response({"status": "FAILED", "error": "Handle is required"}, status=400)
+    
+    try:
+        if platform == 'codeforces':
+            headers = {
+                'User-Agent': 'Codeforces Companion (https://cper.online)'
+            }
+            response = requests.get(
+                f'https://codeforces.com/api/user.info?handles={handle}',
+                headers=headers,
+                timeout=10
+            )
+            data = response.json()
+            return Response(data)
+        
+        elif platform == 'atcoder':
+            import urllib.parse
+            url = f'https://atcoder.jp/users/{urllib.parse.quote(handle)}/history/json'
+            response = requests.get(url)
+            if response.status_code == 200:
+                history = response.json()
+                if history:
+                    latest_rating = history[-1].get('NewRating', 0)
+                    max_rating = max(h.get('NewRating', 0) for h in history)
+                    result = [{
+                        'handle': handle,
+                        'rating': latest_rating,
+                        'maxRating': max_rating,
+                        'rank': '',
+                        'maxRank': '',
+                        'registrationTimeSeconds': history[0].get('EndTime', 0),
+                        'lastOnlineTimeSeconds': history[-1].get('EndTime', 0),
+                        'contribution': 0,
+                        'friendOfCount': 0,
+                        'avatar': f'https://img.atcoder.jp/users/{urllib.parse.quote(handle)}/medium.jpg',
+                        'titlePhoto': '',
+                        'organization': ''
+                    }]
+                    return Response({"status": "OK", "result": result})
+                else:
+                    return Response({"status": "FAILED", "error": "No contest history found"})
+            else:
+                return Response({"status": "FAILED", "error": "User not found"}, status=404)
+        
+        elif platform == 'luogu':
+            url = f'https://www.luogu.com.cn/api/user/search?keyword={handle}'
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('users'):
+                    user = data['users'][0]
+                    result = [{
+                        'handle': user.get('name', handle),
+                        'rating': user.get('rating', 0),
+                        'maxRating': user.get('maxRating', user.get('rating', 0)),
+                        'rank': user.get('rank', ''),
+                        'maxRank': '',
+                        'registrationTimeSeconds': user.get('registerTime', 0),
+                        'lastOnlineTimeSeconds': user.get('lastOnline', 0),
+                        'contribution': user.get('contribution', 0),
+                        'friendOfCount': 0,
+                        'avatar': f'https://cdn.luogu.com.cn/upload/usericon/{user.get("uid", "")}.png',
+                        'titlePhoto': '',
+                        'organization': user.get('organization', '')
+                    }]
+                    return Response({"status": "OK", "result": result})
+                else:
+                    return Response({"status": "FAILED", "error": "User not found"}, status=404)
+            else:
+                return Response({"status": "FAILED", "error": "Request failed"}, status=500)
+        
+        elif platform == 'nowcoder':
+            result = [{
+                'handle': handle,
+                'rating': 0,
+                'maxRating': 0,
+                'rank': '',
+                'maxRank': '',
+                'registrationTimeSeconds': 0,
+                'lastOnlineTimeSeconds': 0,
+                'contribution': 0,
+                'friendOfCount': 0,
+                'avatar': '',
+                'titlePhoto': '',
+                'organization': ''
+            }]
+            return Response({"status": "OK", "result": result})
+        
+        else:
+            return Response({"status": "FAILED", "error": f"Unknown platform: {platform}"}, status=400)
+    
+    except requests.exceptions.RequestException as e:
+        return Response({"status": "FAILED", "error": str(e)}, status=500)

@@ -1,4 +1,4 @@
-from django.urls import path, include
+from django.urls import path, include, re_path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from . import views
@@ -26,5 +26,6 @@ urlpatterns = [
     # 其他 API
     path('', include(router.urls)),
     path('health/', views.health_check, name='health-check'),
+    re_path(r'^user-info/?$', views.user_info, name='user-info'),
     path('codeforces/<path:endpoint>/', views.CodeforcesProxyView.as_view(), name='codeforces-proxy'),
 ]

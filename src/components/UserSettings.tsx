@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Edit2, Check, Lock, Key, AlertCircle, Save } from 'lucide-react';
+import { User, Mail, Edit2, Check, Lock, Key, AlertCircle, Save, Plus, Trash2, RefreshCw, ExternalLink } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 interface UserProfileData {
@@ -12,6 +12,13 @@ interface UserProfileData {
   };
   profiles: any[];
 }
+
+const PLATFORM_CONFIG: Record<string, { name: string; color: string; icon: string }> = {
+  codeforces: { name: 'Codeforces', color: 'bg-rose-500', icon: 'CF' },
+  atcoder: { name: 'AtCoder', color: 'bg-indigo-500', icon: 'AC' },
+  luogu: { name: '洛谷', color: 'bg-emerald-500', icon: 'LG' },
+  nowcoder: { name: '牛客', color: 'bg-cyan-500', icon: 'NK' },
+};
 
 export default function UserSettings() {
   const { user, token } = useAuth();
@@ -35,6 +42,14 @@ export default function UserSettings() {
     new_password: '',
     new_password2: '',
   });
+  
+  // 平台账号配置表单
+  const [isAddingProfile, setIsAddingProfile] = useState(false);
+  const [addProfileForm, setAddProfileForm] = useState({
+    platform: 'codeforces',
+    handle: '',
+  });
+  const [profileLoading, setProfileLoading] = useState<string | null>(null);
 
   // 获取用户信息
   const fetchUserProfile = async () => {
@@ -122,6 +137,101 @@ export default function UserSettings() {
       }
     } catch (error) {
       setErrorMessage('网络错误，请稍后重试');
+    }
+  };
+
+  // 添加平台账号
+  const handleAddProfile = async () => {
+    try {
+      setErrorMessage(null);
+      setProfileLoading('add');
+      
+      const response = await fetch('/api/users/profiles/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(addProfileForm),
+      });
+      
+      if (response.ok) {
+        await fetchUserProfile();
+        setIsAddingProfile(false);
+        setAddProfileForm({ platform: 'codeforces', handle: '' });
+        setSuccessMessage('平台账号添加成功！');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        const data = await response.json();
+        setErrorMessage(data.error || Object.values(data).flat().join(', ') || '添加失败');
+      }
+    } catch (error) {
+      setErrorMessage('网络错误，请稍后重试');
+    } finally {
+      setProfileLoading(null);
+    }
+  };
+
+  // 删除平台账号
+  const handleDeleteProfile = async (profileId: number) => {
+    try {
+      setErrorMessage(null);
+      setProfileLoading(`delete-${profileId}`);
+      
+      const response = await fetch(`/api/users/profiles/${profileId}/`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (response.ok) {
+        await fetchUserProfile();
+        setSuccessMessage('平台账号删除成功！');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setErrorMessage('删除失败');
+      }
+    } catch (error) {
+      setErrorMessage('网络错误，请稍后重试');
+    } finally {
+      setProfileLoading(null);
+    }
+  };
+
+  // 刷新平台账号信息
+  const handleRefreshProfile = async (profileId: number, platform: string, handle: string) => {
+    try {
+      setErrorMessage(null);
+      setProfileLoading(`refresh-${profileId}`);
+      
+      const response = await fetch(`/api/user-info?platform=${platform}&handle=${encodeURIComponent(handle)}`);
+      const data = await response.json();
+      
+      if (response.ok && data.status === 'OK' && data.result.length > 0) {
+        const profile = data.result[0];
+        await fetch(`/api/users/profiles/${profileId}/`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            rating: profile.rating,
+            max_rating: profile.maxRating,
+            avatar: profile.avatar,
+          }),
+        });
+        await fetchUserProfile();
+        setSuccessMessage('平台账号信息已更新！');
+        setTimeout(() => setSuccessMessage(null), 3000);
+      } else {
+        setErrorMessage('刷新失败，无法获取最新信息');
+      }
+    } catch (error) {
+      setErrorMessage('网络错误，请稍后重试');
+    } finally {
+      setProfileLoading(null);
     }
   };
 
@@ -343,31 +453,128 @@ export default function UserSettings() {
         
         {/* 平台配置 */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="text-lg font-bold text-slate-900">平台配置</h3>
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-lg font-bold text-slate-900">平台账号配置</h3>
+            <button
+              onClick={() => setIsAddingProfile(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg transition"
+            >
+              <Plus className="w-4 h-4" />
+              添加账号
+            </button>
           </div>
           
           <div className="p-6">
-            {profileData?.profiles.length > 0 ? (
+            {isAddingProfile ? (
               <div className="space-y-4">
-                {profileData.profiles.map((profile) => (
-                  <div key={profile.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100">
-                    <div>
-                      <div className="font-bold text-slate-900">{profile.platform}</div>
-                      <div className="text-sm text-slate-600">ID: {profile.handle}</div>
-                      {profile.rating && (
-                        <div className="text-xs text-slate-500">Rating: {profile.rating}</div>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      最后更新: {new Date(profile.last_updated).toLocaleDateString()}
-                    </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2">平台</label>
+                    <select
+                      value={addProfileForm.platform}
+                      onChange={(e) => setAddProfileForm({ ...addProfileForm, platform: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white text-slate-900 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition"
+                    >
+                      {Object.entries(PLATFORM_CONFIG).map(([key, value]) => (
+                        <option key={key} value={key}>{value.name}</option>
+                      ))}
+                    </select>
                   </div>
-                ))}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2">用户名/Handle</label>
+                    <input
+                      type="text"
+                      value={addProfileForm.handle}
+                      onChange={(e) => setAddProfileForm({ ...addProfileForm, handle: e.target.value })}
+                      className="w-full px-4 py-2.5 bg-white text-slate-900 rounded-lg border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 outline-none transition"
+                      placeholder={`请输入 ${PLATFORM_CONFIG[addProfileForm.platform].name} 用户名`}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={handleAddProfile}
+                    disabled={profileLoading === 'add'}
+                    className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-bold bg-amber-500 text-slate-950 rounded-lg hover:bg-amber-600 transition disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {profileLoading === 'add' ? '添加中...' : '添加'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsAddingProfile(false);
+                      setAddProfileForm({ platform: 'codeforces', handle: '' });
+                    }}
+                    className="px-4 py-2.5 text-sm font-bold text-slate-600 hover:text-slate-900 transition"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : profileData?.profiles.length > 0 ? (
+              <div className="space-y-4">
+                {profileData.profiles.map((profile) => {
+                  const config = PLATFORM_CONFIG[profile.platform] || { name: profile.platform, color: 'bg-slate-500', icon: '?' };
+                  return (
+                    <div key={profile.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-slate-200 transition">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 ${config.color} rounded-xl flex items-center justify-center text-white font-bold text-sm shadow-md`}>
+                          {config.icon}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-900">{config.name}</div>
+                          <div className="text-sm text-slate-600">Handle: {profile.handle}</div>
+                          {profile.rating && (
+                            <div className="text-xs text-slate-500 mt-1">
+                              Rating: <span className="font-bold">{profile.rating}</span> 
+                              {profile.max_rating && ` (最高: ${profile.max_rating})`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleRefreshProfile(profile.id, profile.platform, profile.handle)}
+                          disabled={profileLoading === `refresh-${profile.id}`}
+                          className="p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition disabled:opacity-50"
+                          title="刷新信息"
+                        >
+                          {profileLoading === `refresh-${profile.id}` ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-4 h-4" />
+                          )}
+                        </button>
+                        <a
+                          href={`https://${profile.platform === 'codeforces' ? 'codeforces.com/profile' : 
+                            profile.platform === 'atcoder' ? 'atcoder.jp/users' : 
+                            profile.platform === 'luogu' ? 'luogu.com.cn/user' : 
+                            'ac.nowcoder.com/acm/contest/profile'}/${profile.handle}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition"
+                          title="查看主页"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                        <button
+                          onClick={() => handleDeleteProfile(profile.id)}
+                          disabled={profileLoading === `delete-${profile.id}`}
+                          className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition disabled:opacity-50"
+                          title="删除"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-slate-500">
-                暂无平台配置，后续可以添加您的竞赛平台账号
+                <div className="text-4xl mb-4">🎯</div>
+                <div className="font-medium mb-2">暂无平台账号配置</div>
+                <div className="text-sm">点击右上角按钮添加您的竞赛平台账号，配置后搜索将默认展示您的训练信息</div>
               </div>
             )}
           </div>
